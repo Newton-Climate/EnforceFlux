@@ -10,6 +10,7 @@ enforceflux = "enforceflux.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest"]
+meteo = ["cdsapi", "eccodes"]
 
 [project.entry-points."enforceflux.source"]
 static = "enforceflux.plugins.source_static:StaticSourceModel"
