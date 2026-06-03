@@ -1,0 +1,63 @@
+# End-to-end example using FLEXPART's bundled test meteorology (2009-01-01).
+# The EC2009010100 and EC2009010106 met files must be downloaded first:
+#
+#   mkdir -p flexpart/tests/testdata
+#   wget -r -nH --cut-dirs=2 --no-parent --accept="EC2009010100,EC2009010106" \
+#        -P flexpart/tests/testdata/ https://webdata.wolke.img.univie.ac.at/flexpart/
+#
+# Then run:
+#   python examples/run_simulation_example.py
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options    # has SPECIES_024 = CH4 (no REAGENTS → no OH chemistry)
+  available_file: ../flexpart/tests/default_winds/AVAILABLE
+  meteo_dir:     ../flexpart/tests/testdata
+  run_dir:       ../runs/example_simulation
+
+simulation:
+  start: "2009-01-01T00:00:00"
+  end:   "2009-01-01T03:00:00"
+  output_step_seconds: 3600
+  sync_seconds: 900
+  nxshift: 0    # 1.5° test data; use -9999 for ERA5 (auto-detect → 359)
+
+domain:
+  lon_min: -25.0
+  lat_min:  10.0
+  lon_max:  60.0   # 85 cells × 1°
+  lat_max:  75.0   # 65 cells × 1°
+  dx: 1.0
+  dy: 1.0
+  heights_m: [100.0, 500.0, 1000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24     # → SPECIES_024 in options/SPECIES/
+
+sources:
+  # Ruhr industrial region — representative point source
+  - type: point
+    id: ruhr_industrial
+    lon:  7.5
+    lat: 51.5
+    alt_m: 50.0
+    emission_rate_kg_s: 5.0e-3    # ~430 kg/day (~157 t/yr), large industrial facility
+    n_particles: 20000
+
+  # Paris Basin diffuse agricultural emissions
+  - type: diffuse
+    id: paris_basin_ag
+    lon_min:  1.0
+    lon_max:  4.0
+    lat_min: 48.0
+    lat_max: 50.0
+    alt_m: 2.0
+    emission_flux_kg_m2_s: 5.0e-10   # ~43 mg/m²/day — moderate agricultural CH4
+    cell_size_deg: 0.5
+    n_particles_per_cell: 500
+
+output:
+  path: ../outputs/example_simulation.nc
+  compress: true
+  per_source: false

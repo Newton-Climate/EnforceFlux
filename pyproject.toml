@@ -1,0 +1,42 @@
+[project]
+name = "enforceflux"
+version = "0.1.0"
+description = "OSSE framework for methane flux monitoring systems"
+requires-python = ">=3.10"
+dependencies = ["numpy", "pyproj", "netCDF4"]
+
+[project.scripts]
+enforceflux = "enforceflux.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+meteo = ["cdsapi", "eccodes"]
+
+[project.entry-points."enforceflux.source"]
+static = "enforceflux.plugins.source_static:StaticSourceModel"
+
+[project.entry-points."enforceflux.instrument"]
+static = "enforceflux.plugins.instrument_static:StaticInstrumentModel"
+
+[project.entry-points."enforceflux.transport"]
+gaussian = "enforceflux.plugins.transport_gaussian:GaussianTransportModel"
+flexpart = "enforceflux.plugins.transport_flexpart:FlexpartTransportModel"
+
+[project.entry-points."enforceflux.inversion"]
+bayesian = "enforceflux.plugins.inversion_bayesian:BayesianInversionEngine"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "flexpart_integration: exercises the compiled FLEXPART executable",
+]

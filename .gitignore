@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Outputs and run directories
+outputs/
+runs/
+
+# macOS
+.DS_Store
+
+# Test cache
+.pytest_cache/
+
+# FLEXPART build artifacts (keep src/*.f90 but not compiled objects)
+flexpart/src/*.o
+flexpart/src/*.mod
+flexpart/src/FLEXPART
+flexpart/src/FLEXPART_ETA
+flexpart/tests/testdata/
+flexpart/tests/__pycache__/
+
+# Editor
+.idea/
+.vscode/

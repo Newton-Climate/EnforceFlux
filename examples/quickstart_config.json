@@ -1,0 +1,83 @@
+{
+  "random_seed": 7,
+  "domain": {
+    "x_min": 0,
+    "x_max": 1000,
+    "y_min": 0,
+    "y_max": 1000,
+    "grid_spacing": 250,
+    "crs": "EPSG:32610",
+    "crs_wgs84": "EPSG:4326"
+  },
+  "components": {
+    "source": {
+      "plugin": "enforceflux.source.static",
+      "config": {
+        "sources": [
+          {
+            "id": "S1",
+            "kind": "point",
+            "x": 200,
+            "y": 300,
+            "flux_true": 1.2,
+            "flux_prior_mean": 0.4,
+            "flux_prior_std": 0.6
+          },
+          {
+            "id": "S2",
+            "kind": "area",
+            "x": 700,
+            "y": 600,
+            "flux_true": 0.8,
+            "flux_prior_mean": 0.5,
+            "flux_prior_std": 0.5
+          }
+        ]
+      }
+    },
+    "instrument": {
+      "plugin": "enforceflux.instrument.static",
+      "config": {
+        "instruments": [
+          {
+            "id": "I1",
+            "kind": "open_path",
+            "x": 400,
+            "y": 300,
+            "noise_std": 0.05,
+            "averaging_seconds": 60
+          },
+          {
+            "id": "I2",
+            "kind": "open_path",
+            "x": 800,
+            "y": 400,
+            "noise_std": 0.05,
+            "averaging_seconds": 60
+          },
+          {
+            "id": "I3",
+            "kind": "flux_chamber",
+            "x": 200,
+            "y": 800,
+            "noise_std": 0.08,
+            "averaging_seconds": 120
+          }
+        ]
+      }
+    },
+    "transport": {
+      "plugin": "enforceflux.transport.gaussian",
+      "config": {
+        "sigma": 200.0,
+        "wind": [50.0, 0.0]
+      }
+    },
+    "inversion": {
+      "plugin": "enforceflux.inversion.bayesian",
+      "config": {
+        "r_cond": 1e-6
+      }
+    }
+  }
+}
