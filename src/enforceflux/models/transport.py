@@ -5,6 +5,7 @@ from typing import Iterable
 
 import numpy as np
 
+from enforceflux.config import TransportConfig
 from enforceflux.models.instrument import Instrument
 from enforceflux.models.source import Source
 
@@ -32,3 +33,34 @@ class GaussianTransport:
                 g[i, j] = norm * np.exp(-r2 / (2.0 * self.sigma ** 2))
 
         return g
+
+
+@dataclass(frozen=True)
+class FlexpartTransport:
+    """Placeholder for coupling to FLEXPART footprints.
+
+    Intended usage: load a precomputed footprint matrix G from FLEXPART
+    output or call a wrapper that produces G for the requested sources
+    and instruments. Prefer the plugin-based FLEXPART transport for new
+    work.
+    """
+
+    footprint_path: str
+
+    def build_forward_operator(
+        self,
+        sources: Iterable[Source],
+        instruments: Iterable[Instrument],
+    ) -> np.ndarray:
+        raise NotImplementedError(
+            "FlexpartTransport is a stub. Provide a footprint matrix loader."
+        )
+
+
+def build_transport(config: TransportConfig) -> GaussianTransport | FlexpartTransport:
+    model = config.model.lower()
+    if model == "gaussian":
+        return GaussianTransport(sigma=config.sigma, wind=(config.wind[0], config.wind[1]))
+    if model == "flexpart":
+        return FlexpartTransport(footprint_path="")
+    raise ValueError(f"Unknown transport model: {config.model}")
