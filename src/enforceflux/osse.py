@@ -13,7 +13,7 @@ from enforceflux.core.base import (
     ITransportModel,
 )
 from enforceflux.metrics import MetricResults, compute_metrics
-from enforceflux.models.instrument import InstrumentOperator
+from enforceflux.instrument import InstrumentOperator
 from enforceflux.retrieval.inversion import InversionResult
 from enforceflux.utils.plugin_registry import get_plugin, normalize_plugin_name
 

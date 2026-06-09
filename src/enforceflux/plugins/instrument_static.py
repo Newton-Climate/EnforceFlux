@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from enforceflux.core.base import IInstrumentModel
-from enforceflux.models.instrument import Instrument
+from enforceflux.instrument import Instrument
 
 # Maps legacy "kind" strings to INSTRUMENT_DB tech_ids
 _KIND_TO_TECH_ID: dict[str, str] = {
