@@ -93,6 +93,7 @@ class SimulationConfig:
     n_sync_s: int = 900
     output_compress: bool = True
     output_per_source: bool = False
+    ldirect: int = 1              # 1 = forward transport; -1 = backward (footprint/Jacobian) mode
 
 
 # ── YAML loader ───────────────────────────────────────────────────────────────
@@ -274,9 +275,12 @@ class FlexpartSimulation:
         step = cfg.output_step_s
         sync = cfg.n_sync_s
         per_src = 1 if cfg.output_per_source else 0
+        # FLEXPART requires IOUTPUTFOREACHRELEASE=1 in backward mode
+        if cfg.ldirect == -1:
+            per_src = 1
         path.write_text(
             "&COMMAND\n"
-            f" LDIRECT=               1,\n"
+            f" LDIRECT=               {cfg.ldirect},\n"
             f" IBDATE=         {cfg.start.strftime('%Y%m%d')},\n"
             f" IBTIME=           {cfg.start.strftime('%H%M%S')},\n"
             f" IEDATE=         {cfg.end.strftime('%Y%m%d')},\n"
@@ -421,8 +425,9 @@ class FlexpartSimulation:
         exe = self.config.executable
         if not exe.exists():
             raise FileNotFoundError(f"FLEXPART executable not found: {exe}")
+        # Pass pathnames as its filename only; FLEXPART opens it relative to cwd=run_dir.
         subprocess.run(
-            [str(exe), str(pathnames)],
+            [str(exe), pathnames.name],
             cwd=run_dir,
             check=True,
             env=os.environ.copy(),

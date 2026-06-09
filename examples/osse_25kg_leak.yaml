@@ -1,0 +1,47 @@
+# OSSE example — single 25 kg/hr methane point source
+# Uses the same bundled test meteorology (2009-01-01) as simulation_test.yaml.
+#
+# Paths are relative to the repo root (run from there):
+#   python examples/osse_25kg_leak_demo.py
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../flexpart/tests/default_winds/AVAILABLE
+  meteo_dir:     ../flexpart/tests/testdata
+  run_dir:       ../runs/osse_25kg_leak
+
+simulation:
+  start: "2009-01-01T00:00:00"
+  end:   "2009-01-01T03:00:00"
+  output_step_seconds: 3600
+  sync_seconds: 900
+  nxshift: 0    # 1.5° test data; ERA5 would use -9999 (auto-detect → 359)
+
+domain:
+  lon_min: -25.0
+  lat_min:  10.0
+  lon_max:  60.0   # 85 cells × 1°
+  lat_max:  75.0   # 65 cells × 1°
+  dx: 1.0
+  dy: 1.0
+  heights_m: [100.0, 500.0, 1000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24     # → SPECIES_024
+
+sources:
+  # Single industrial point source — 25 kg/hr methane leak
+  - type: point
+    id: ruhr_leak_25kghr
+    lon:  7.5
+    lat: 51.5
+    alt_m: 5.0
+    emission_rate_kg_s: 6.9444e-3   # 25 kg/hr ÷ 3600 s/hr
+    n_particles: 20000
+
+output:
+  path: ../outputs/osse_25kg_leak.nc
+  compress: true
+  per_source: false
