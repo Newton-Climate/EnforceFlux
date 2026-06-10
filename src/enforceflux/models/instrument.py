@@ -1,20 +1,28 @@
-from __future__ import annotations
+"""
+Backward-compatibility shim.
 
-from dataclasses import dataclass
+The instrument operator module has been moved to the ``enforceflux.instrument``
+sub-package.  This module re-exports everything so that existing imports of the
+form ``from enforceflux.models.instrument import ...`` continue to work.
+"""
+from enforceflux.instrument import (  # noqa: F401
+    INSTRUMENT_DB,
+    Instrument,
+    InstrumentOperator,
+    ObservableType,
+    ObservationResult,
+    OperatingMode,
+    OperatorParams,
+    OperatorType,
+)
 
-
-@dataclass(frozen=True)
-class Instrument:
-    id: str
-    kind: str
-    x: float
-    y: float
-    noise_std: float
-    averaging_seconds: float
-    z: float = 0.0
-
-    @property
-    def effective_noise_std(self) -> float:
-        if self.averaging_seconds <= 1:
-            return self.noise_std
-        return self.noise_std / (self.averaging_seconds ** 0.5)
+__all__ = [
+    "INSTRUMENT_DB",
+    "Instrument",
+    "InstrumentOperator",
+    "ObservableType",
+    "ObservationResult",
+    "OperatingMode",
+    "OperatorParams",
+    "OperatorType",
+]

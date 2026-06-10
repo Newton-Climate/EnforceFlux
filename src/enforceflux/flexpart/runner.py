@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime as _DT
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -316,7 +317,15 @@ class FlexpartRunner:
         zkind = int(self.config.get("release_zkind", 1))
         parts = int(self.config.get("parts", 10000))
         species_num = int(self.config.get("species_number", 24))
-        mass = float(self.config.get("unit_emission_rate", 1.0))
+
+        # unit_emission_rate is now in kg/s.  MASS (total kg released) = rate × duration.
+        # This gives G[i,j] units of [concentration / (kg/s)] — physically correct for a
+        # continuous emission source.
+        unit_kg_s = float(self.config.get("unit_emission_rate", 1.0))
+        t0 = _DT.strptime(f"{start_date}{start_time:06d}", "%Y%m%d%H%M%S")
+        t1 = _DT.strptime(f"{end_date}{end_time:06d}", "%Y%m%d%H%M%S")
+        duration_s = max(abs((t1 - t0).total_seconds()), 1.0)
+        mass = unit_kg_s * duration_s
 
         lines = [
             "***************************************************************************************************************",

@@ -13,14 +13,15 @@ from enforceflux.core.base import (
     ITransportModel,
 )
 from enforceflux.metrics import MetricResults, compute_metrics
+from enforceflux.instrument import InstrumentOperator
 from enforceflux.retrieval.inversion import InversionResult
 from enforceflux.utils.plugin_registry import get_plugin, normalize_plugin_name
 
 
 @dataclass(frozen=True)
 class OSSEOutput:
-    g: np.ndarray
-    y: np.ndarray
+    g: np.ndarray         # (m, n) instrument-modified forward operator (H_g)
+    y: np.ndarray         # (m,) simulated observations (NaN where invalid)
     x_true: np.ndarray
     x_prior: np.ndarray
     inversion: InversionResult
@@ -66,26 +67,33 @@ def run_osse(config: ProjectConfig) -> OSSEOutput:
     forward: ForwardModelResult = transport.build_forward_operator(
         sources, instruments, config.domain, transport_component.config
     )
-    g = forward.g
 
     x_true = np.array([src.flux_true for src in sources])
     x_prior = np.array([src.flux_prior_mean for src in sources])
 
-    noise_std = np.array([inst.effective_noise_std for inst in instruments])
-    r = np.diag(noise_std**2)
-
     rng = np.random.default_rng(config.random_seed)
-    noise = rng.normal(0.0, noise_std)
-    y = g @ x_true + noise
+    op = InstrumentOperator(instruments, rng=rng)
+    obs = op.simulate_observations(forward.g, x_true)
+
+    valid = obs.valid_mask
+    if not valid.any():
+        raise RuntimeError(
+            "No valid observations after applying instrument operator. "
+            "Check instrument configuration (dropout probability, detection limits)."
+        )
+
+    g_inv = obs.H_g[valid]
+    y_inv = obs.y_obs[valid]
+    r_inv = obs.R[np.ix_(valid, valid)]
 
     s_a = np.diag([src.flux_prior_std**2 for src in sources])
 
     inversion_engine = inversion_cls()
-    inversion = inversion_engine.invert(g=g, y=y, x_prior=x_prior, s_a=s_a, r=r)
+    inversion = inversion_engine.invert(g=g_inv, y=y_inv, x_prior=x_prior, s_a=s_a, r=r_inv)
 
     r_cond = float(inversion_component.config.get("r_cond", 1e-10))
     metrics = compute_metrics(
-        g=g,
+        g=g_inv,
         fisher=inversion.fisher_information,
         posterior_cov=inversion.posterior_cov,
         averaging_kernel=inversion.averaging_kernel,
@@ -93,8 +101,8 @@ def run_osse(config: ProjectConfig) -> OSSEOutput:
     )
 
     return OSSEOutput(
-        g=g,
-        y=y,
+        g=obs.H_g,
+        y=obs.y_obs,
         x_true=x_true,
         x_prior=x_prior,
         inversion=inversion,

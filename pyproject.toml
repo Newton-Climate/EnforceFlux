@@ -38,5 +38,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "flexpart_integration: exercises the compiled FLEXPART executable",
+    "flexpart_integration: exercises the compiled FLEXPART binary and bundled test met data",
 ]
+

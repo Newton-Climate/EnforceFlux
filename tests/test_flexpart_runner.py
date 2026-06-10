@@ -42,12 +42,10 @@ def _instruments() -> list[Instrument]:
     return [
         Instrument(
             id="I1",
-            kind="open_path",
+            tech_id="OP",
             x=600,
             y=600,
             z=2,
-            noise_std=0.1,
-            averaging_seconds=60,
         )
     ]
 
