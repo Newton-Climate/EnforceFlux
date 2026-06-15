@@ -1,0 +1,39 @@
+# YAML config for apps/instrument_main.py
+
+input:
+  simulation_netcdf: ../outputs/simulation_main.nc
+  variable_name: ch4_mixing_ratio
+  level_index: 0
+  release_index: 0
+
+operator:
+  random_seed: 42
+
+instruments:
+  - id: OP_west
+    tech_id: OP
+    mode: good
+    lon: -122.2
+    lat: 38.9
+    z: 2.0
+    response_scale: 1.0
+
+  - id: OP_central
+    tech_id: OP
+    mode: good
+    lon: -121.7
+    lat: 39.1
+    z: 2.0
+    response_scale: 1.0
+
+  - id: EC_north
+    tech_id: EC
+    mode: good
+    lon: -121.4
+    lat: 39.8
+    z: 2.0
+    response_scale: 1.0
+
+output:
+  instrument_netcdf: ../outputs/instrument_main.nc
+  timeseries_csv: ../outputs/instrument_observations.csv

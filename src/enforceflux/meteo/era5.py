@@ -29,7 +29,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +53,10 @@ _DEFAULT_PRESSURE_LEVELS = [
     "500",  "400", "300", "250", "200",
     "150",  "100",  "50",  "30",  "20", "10",
 ]
+
+# 3-D model-level fields (ECMWF IFS hybrid levels) needed by FLEXPART.
+# Parameter IDs follow ECMWF MARS conventions for ERA5 complete.
+_ML_PARAM_IDS = "130/131/132/133/246/247/248"
 
 # 2-D instantaneous single-level fields (analysed every hour in ERA5).
 _SFC_INSTANT = [
@@ -79,9 +83,10 @@ _SFC_ACCUMULATED = [
 ]
 
 # Time-invariant fields downloaded once (no time/date in request).
+# "geopotential" is the correct CDS variable name for surface geopotential (z / orography).
 _STATIC_VARIABLES = [
     "land_sea_mask",
-    "orography",                   # surface geopotential
+    "geopotential",
 ]
 
 
@@ -112,6 +117,19 @@ class ERA5Downloader:
     pressure_levels:
         List of pressure levels (hPa as strings) to download.
         Defaults to :data:`_DEFAULT_PRESSURE_LEVELS`.
+    vertical_mode:
+        ``"pressure_levels"`` (default) uses CDS pressure-level products.
+        ``"model_levels"`` uses ERA5 complete model-level fields (required
+        by FLEXPART's ECMWF reader).
+    model_level_grid_deg:
+        Grid spacing in degrees for model-level requests. If ``None``, CDS
+        default grid is used.
+    model_level_allow_global_fallback:
+        If ``True``, failed area-clipped model-level requests retry globally.
+        If ``False``, fail fast to avoid silently downloading huge global files.
+    cleanup_raw_daily_grib:
+        If ``True``, delete intermediate daily raw GRIBs after merging/splitting
+        into FLEXPART timestep files.
     """
 
     def __init__(
@@ -120,11 +138,19 @@ class ERA5Downloader:
         *,
         timestep_hours: int = 3,
         pressure_levels: list[str] | None = None,
+        vertical_mode: Literal["pressure_levels", "model_levels"] = "pressure_levels",
+        model_level_grid_deg: float | None = 0.25,
+        model_level_allow_global_fallback: bool = False,
+        cleanup_raw_daily_grib: bool = False,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.timestep_hours = timestep_hours
         self.pressure_levels = pressure_levels or _DEFAULT_PRESSURE_LEVELS
+        self.vertical_mode = vertical_mode
+        self.model_level_grid_deg = model_level_grid_deg
+        self.model_level_allow_global_fallback = model_level_allow_global_fallback
+        self.cleanup_raw_daily_grib = cleanup_raw_daily_grib
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -162,6 +188,10 @@ class ERA5Downloader:
 
         # Static fields (land-sea mask, orography) — downloaded once.
         static_path = self.output_dir / "EA_static.grib"
+        if static_path.exists() and not _is_grib_file_readable(static_path):
+            log.warning("Static GRIB appears corrupted, re-downloading: %s", static_path.name)
+            static_path.unlink(missing_ok=True)
+
         if not static_path.exists():
             log.info("Fetching static fields → %s", static_path.name)
             self._fetch_static(static_path, area=area)
@@ -176,14 +206,40 @@ class ERA5Downloader:
             if not times:
                 continue
 
-            # 3-D pressure-level fields.
-            pl_raw = self.output_dir / f"ERA5_pl_{date_str}.grib"
-            if not pl_raw.exists():
-                log.info("Fetching pressure-level fields %s times=%s", date_str, times)
-                self._fetch_pressure_levels(pl_raw, date_str, times, area=area)
+            # Skip the entire day if all per-timestep EA files already exist.
+            date_int = int(date_str.replace("-", ""))
+            expected = [
+                self.output_dir / f"EA{date_int:08d}{int(t[:2]):02d}"
+                for t in times
+            ]
+            if all(p.exists() for p in expected):
+                log.info("All EA files for %s already present — skipping.", date_str)
+                all_files.extend(expected)
+                continue
+
+            # 3-D upper-air fields (pressure-level or model-level).
+            if self.vertical_mode == "model_levels":
+                pl_raw = self.output_dir / f"ERA5_ml_{date_str}.grib"
+                if pl_raw.exists() and not _is_grib_file_readable(pl_raw):
+                    log.warning("Corrupted GRIB detected, re-downloading: %s", pl_raw.name)
+                    pl_raw.unlink(missing_ok=True)
+                if not pl_raw.exists():
+                    log.info("Fetching model-level fields %s times=%s", date_str, times)
+                    self._fetch_model_levels(pl_raw, date_str, times, area=area)
+            else:
+                pl_raw = self.output_dir / f"ERA5_pl_{date_str}.grib"
+                if pl_raw.exists() and not _is_grib_file_readable(pl_raw):
+                    log.warning("Corrupted GRIB detected, re-downloading: %s", pl_raw.name)
+                    pl_raw.unlink(missing_ok=True)
+                if not pl_raw.exists():
+                    log.info("Fetching pressure-level fields %s times=%s", date_str, times)
+                    self._fetch_pressure_levels(pl_raw, date_str, times, area=area)
 
             # 2-D single-level fields (instantaneous + accumulated together).
             sl_raw = self.output_dir / f"ERA5_sl_{date_str}.grib"
+            if sl_raw.exists() and not _is_grib_file_readable(sl_raw):
+                log.warning("Corrupted GRIB detected, re-downloading: %s", sl_raw.name)
+                sl_raw.unlink(missing_ok=True)
             if not sl_raw.exists():
                 log.info("Fetching single-level fields %s times=%s", date_str, times)
                 self._fetch_single_levels(sl_raw, date_str, times, area=area)
@@ -191,6 +247,10 @@ class ERA5Downloader:
             # Split per-timestep and merge PL + SL into one file per step.
             day_files = self._merge_and_split(pl_raw, sl_raw, static_path, date_str, times)
             all_files.extend(day_files)
+
+            if self.cleanup_raw_daily_grib:
+                pl_raw.unlink(missing_ok=True)
+                sl_raw.unlink(missing_ok=True)
 
         all_files.sort(key=lambda p: p.name)
 
@@ -222,6 +282,55 @@ class ERA5Downloader:
         if area:
             req["area"] = area
         c.retrieve("reanalysis-era5-pressure-levels", req, str(dest))
+
+    def _fetch_model_levels(
+        self, dest: Path, date: str, times: list[str], *, area: list[float] | None
+    ) -> None:
+        """Fetch ERA5 model-level analysis fields via ERA5 complete.
+
+        FLEXPART's ECMWF input reader expects model-level data with hybrid
+        coefficients (GRIB key ``pv``), which are absent in pressure-level
+        products.
+        """
+        import cdsapi
+
+        c = cdsapi.Client(quiet=True)
+        req: dict = {
+            "class": "ea",
+            "expver": "1",
+            "stream": "oper",
+            "type": "an",
+            "levtype": "ml",
+            "levelist": "1/to/137",
+            "param": _ML_PARAM_IDS,
+            "date": date,
+            "time": times,
+            "format": "grib",
+        }
+        if self.model_level_grid_deg is not None:
+            req["grid"] = [float(self.model_level_grid_deg), float(self.model_level_grid_deg)]
+        if area:
+            req["area"] = area
+
+        try:
+            c.retrieve("reanalysis-era5-complete", req, str(dest))
+        except Exception:
+            if not area:
+                raise
+            if not self.model_level_allow_global_fallback:
+                raise RuntimeError(
+                    "Model-level ERA5 request with area clipping failed and global fallback is disabled. "
+                    "This is intentional to avoid very large global downloads. "
+                    "Check CDS request constraints or explicitly enable global fallback."
+                )
+            # Some CDS environments reject area subsetting for ERA5 complete;
+            # optionally retry globally.
+            log.warning(
+                "Model-level request with area clipping failed for %s; retrying global field.",
+                date,
+            )
+            req.pop("area", None)
+            c.retrieve("reanalysis-era5-complete", req, str(dest))
 
     def _fetch_single_levels(
         self, dest: Path, date: str, times: list[str], *, area: list[float] | None
@@ -291,7 +400,12 @@ class ERA5Downloader:
         date_int = int(date_str.replace("-", ""))
 
         for time_str in times:
-            hh, mm = int(time_str[:2]), int(time_str[3:5]) if ":" in time_str else (int(time_str[:2]), 0)
+            if ":" in time_str:
+                hh = int(time_str[:2])
+                mm = int(time_str[3:5])
+            else:
+                hh = int(time_str[:2])
+                mm = 0
             time_int = hh * 100 + mm   # HHMM as integer (GRIB dataTime)
 
             fname = f"EA{date_int:08d}{hh:02d}"
@@ -412,7 +526,13 @@ def _hour_list(day_start: datetime, day_end: datetime, step: int) -> list[str]:
 def _collect_grib_messages(
     grib_path: Path, store: dict[tuple[int, int], list[bytes]]
 ) -> None:
-    """Read all messages from *grib_path* into *store* keyed by (dataDate, dataTime)."""
+    """Read all messages from *grib_path* into *store* keyed by (validityDate, validityTime).
+
+    Using validityTime (not dataTime) ensures accumulated fields (precipitation,
+    heat fluxes, surface stresses) are placed at the timestep they *end* at,
+    which is what FLEXPART expects.  For instantaneous fields dataTime==validityTime
+    so the behaviour is unchanged.
+    """
     import eccodes
 
     with open(grib_path, "rb") as fh:
@@ -420,11 +540,31 @@ def _collect_grib_messages(
             msg = eccodes.codes_grib_new_from_file(fh)
             if msg is None:
                 break
-            date = eccodes.codes_get(msg, "dataDate")   # YYYYMMDD int
-            time = eccodes.codes_get(msg, "dataTime")   # HHMM int (e.g. 0, 300, 600)
+            vdate = eccodes.codes_get(msg, "validityDate")   # YYYYMMDD int
+            vtime = eccodes.codes_get(msg, "validityTime")   # HHMM int (e.g. 0, 300, 600)
             raw = eccodes.codes_get_message(msg)
             eccodes.codes_release(msg)
-            store.setdefault((date, time), []).append(raw)
+            store.setdefault((vdate, vtime), []).append(raw)
+
+
+def _is_grib_file_readable(path: Path) -> bool:
+    """Best-effort GRIB integrity check using ecCodes message iteration."""
+    try:
+        import eccodes
+    except ImportError:
+        # If eccodes is unavailable we cannot validate; keep existing behavior.
+        return True
+
+    try:
+        with open(path, "rb") as fh:
+            while True:
+                msg = eccodes.codes_grib_new_from_file(fh)
+                if msg is None:
+                    break
+                eccodes.codes_release(msg)
+        return True
+    except Exception:
+        return False
 
 
 def _filename_to_dt(name: str) -> datetime | None:
@@ -443,3 +583,105 @@ def _filename_to_dt(name: str) -> datetime | None:
         )
     except (ValueError, IndexError):
         return None
+
+
+def is_flexpart_meteo_compatible(
+    meteo_dir: str | Path,
+    available_file: str | Path | None = None,
+) -> bool:
+    """Return True if meteorology appears compatible with FLEXPART ECMWF mode.
+
+    The check inspects the first file listed in AVAILABLE and verifies that it
+    carries hybrid-level coefficients (GRIB key ``pv``).
+    """
+    try:
+        import eccodes
+    except ImportError:
+        return False
+
+    meteo_path = Path(meteo_dir)
+    available_path = Path(available_file) if available_file else (meteo_path / "AVAILABLE")
+    if not available_path.exists():
+        return False
+
+    first_name = _first_available_filename(available_path)
+    if first_name is None:
+        return False
+
+    met_file = meteo_path / first_name
+    if not met_file.exists():
+        return False
+
+    with open(met_file, "rb") as fh:
+        gid = eccodes.codes_grib_new_from_file(fh)
+        if gid is None:
+            return False
+        try:
+            try:
+                eccodes.codes_get_size(gid, "pv")
+                return True
+            except Exception:
+                return False
+        finally:
+            eccodes.codes_release(gid)
+
+
+def available_covers_window(
+    available_file: str | Path,
+    start: str | datetime,
+    end: str | datetime,
+    *,
+    timestep_hours: int = 3,
+) -> bool:
+    """Return True if AVAILABLE contains all timestamps in [start, end]."""
+    apath = Path(available_file)
+    if not apath.exists():
+        return False
+
+    t0 = _parse_dt(start)
+    t1 = _parse_dt(end)
+    if t1 < t0:
+        return False
+
+    available_steps = _available_timestamps(apath)
+    if not available_steps:
+        return False
+
+    step = timedelta(hours=timestep_hours)
+    current = t0
+    while current <= t1:
+        if current not in available_steps:
+            return False
+        current += step
+    return True
+
+
+def _available_timestamps(available_file: Path) -> set[datetime]:
+    out: set[datetime] = set()
+    for line in available_file.read_text().splitlines()[3:]:
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        ds, ts = parts[0], parts[1]
+        if len(ds) != 8 or len(ts) < 4:
+            continue
+        try:
+            dt = datetime(
+                int(ds[0:4]), int(ds[4:6]), int(ds[6:8]),
+                int(ts[0:2]), int(ts[2:4]),
+                tzinfo=timezone.utc,
+            )
+        except ValueError:
+            continue
+        out.add(dt)
+    return out
+
+
+def _first_available_filename(available_file: Path) -> str | None:
+    lines = available_file.read_text().splitlines()
+    for line in lines[3:]:
+        parts = line.split()
+        if not parts:
+            continue
+        return parts[-1]
+    return None

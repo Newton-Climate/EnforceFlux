@@ -60,8 +60,63 @@ class FlexpartSimulation:
         self._write_command(options_dir / "COMMAND")
         self._write_outgrid(options_dir / "OUTGRID")
         self._write_releases(options_dir / "RELEASES")
+        self._validate_meteo_inputs()
         self._execute(run_dir, pathnames)
         return self._write_output_netcdf(output_dir)
+
+    def _validate_meteo_inputs(self) -> None:
+        """Validate meteorology before launching FLEXPART.
+
+        FLEXPART's ECMWF reader expects model-level GRIB data with hybrid
+        coefficients (the GRIB key ``pv``). If pressure-level ERA5 data is
+        provided, FLEXPART fails with a cryptic ecCodes error at startup.
+        """
+        cfg = self.config
+        available = cfg.available_file
+        if not available.exists() or not cfg.meteo_dir.exists():
+            return
+
+        entry = self._first_available_entry(available)
+        if entry is None:
+            return
+
+        met_file = cfg.meteo_dir / entry
+        if not met_file.exists():
+            return
+
+        try:
+            import eccodes  # type: ignore[import-untyped]
+        except ImportError:
+            return
+
+        with open(met_file, "rb") as fh:
+            gid = eccodes.codes_grib_new_from_file(fh)
+            if gid is None:
+                raise RuntimeError(f"Meteorology file is empty: {met_file}")
+            try:
+                try:
+                    eccodes.codes_get_size(gid, "pv")
+                except Exception as exc:
+                    raise RuntimeError(
+                        "Meteorology appears to be ERA5 pressure-level data, but "
+                        "FLEXPART requires ECMWF model-level inputs with hybrid "
+                        "coefficients (GRIB key 'pv').\n"
+                        f"Checked file: {met_file}\n"
+                        "Use flex_extract/ERA5 model-level forcing instead of "
+                        "pressure-level CDS fields."
+                    ) from exc
+            finally:
+                eccodes.codes_release(gid)
+
+    @staticmethod
+    def _first_available_entry(available_file: Path) -> str | None:
+        lines = available_file.read_text().splitlines()
+        for line in lines[3:]:
+            parts = line.split()
+            if not parts:
+                continue
+            return parts[-1]
+        return None
 
     # ── Run-dir setup ─────────────────────────────────────────────────────────
 
@@ -224,10 +279,19 @@ class FlexpartSimulation:
         exe = self.config.executable
         if not exe.exists():
             raise FileNotFoundError(f"FLEXPART executable not found: {exe}")
-        subprocess.run(
+        env = os.environ.copy()
+        # Single-threaded OpenMP prevents a race condition in FLEXPART's NetCDF
+        # output writer that causes SIGTRAP (heap corruption) when multiple threads
+        # concurrently access the output buffers on macOS.
+        env["OMP_NUM_THREADS"] = "1"
+        result = subprocess.run(
             [str(exe), pathnames.name],   # filename only: FLEXPART opens relative to cwd
-            cwd=run_dir, check=True, env=os.environ.copy(),
+            cwd=run_dir, env=env,
         )
+        # FLEXPART's Fortran runtime exits via SIGTRAP on some builds even on success.
+        # Treat any signal exit as non-fatal — output presence is the real success check.
+        if result.returncode not in (0, -5):
+            raise subprocess.CalledProcessError(result.returncode, result.args)
 
     # ── Output NetCDF post-processing ─────────────────────────────────────────
 

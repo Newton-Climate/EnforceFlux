@@ -1,0 +1,49 @@
+# ERA5 meteorology download config for FLEXPART forcing.
+#
+# Usage:
+#   python apps/met_main.py --config apps/met_main.yaml
+
+meteo:
+  # Directory to write EA* GRIB files and AVAILABLE.
+  output_dir: ../runs/sacramento_valley_2020/meteo_era5
+  # Optional custom AVAILABLE filename. Defaults to AVAILABLE.
+  available_filename: AVAILABLE
+
+era5:
+  # Requested simulation window in UTC ISO format.
+  start: "2020-07-01T00:00:00"
+  end: "2020-07-02T00:00:00"
+
+  # Temporal step in hours used for requested ERA5 timesteps.
+  timestep_hours: 3
+
+  # Set to model_levels for FLEXPART-compatible ECMWF hybrid-level inputs.
+  # Use pressure_levels only when you explicitly want pressure-level products.
+  vertical_mode: model_levels
+
+  # Optional for pressure_levels mode. Leave empty to use package defaults.
+  pressure_levels: []
+
+  # Model-level download options.
+  model_level_grid_deg: 0.25
+  model_level_allow_global_fallback: false
+
+  # Delete per-day raw ERA5 downloads after splitting/merging EA files.
+  cleanup_raw_daily_grib: false
+
+  # Bounding box can be mapping or [lon_min, lat_min, lon_max, lat_max].
+  bbox:
+    lon_min: -122.5
+    lat_min: 38.6
+    lon_max: -121.0
+    lat_max: 39.8
+
+# Optional credential override. If omitted, cdsapi uses ~/.cdsapirc.
+credentials:
+  # cdsapirc: ~/.cdsapirc
+
+run:
+  # If true, skip download when AVAILABLE already covers start->end.
+  skip_if_available_covers_window: false
+  # Timestep used by coverage check; keep aligned with era5.timestep_hours.
+  check_timestep_hours: 3

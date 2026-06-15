@@ -1,0 +1,76 @@
+# YAML config for apps/flux_main.py
+# Builds transport matrix G from simulation NetCDF and runs OE flux inversion.
+
+input:
+  # simulation_receptors | instrument_netcdf
+  mode: simulation_receptors
+
+  simulation_netcdf: ../outputs/simulation_main.nc
+  # Required when mode=instrument_netcdf:
+  # instrument_netcdf: ../outputs/instrument_main.nc
+
+  variable_name: ch4_mixing_ratio
+  time_index: 0
+  level_index: 0
+  # When mode=instrument_netcdf and instrument timesteps exceed simulation,
+  # reuse final simulation timestep for remaining instrument times.
+  reuse_last_sim_time: true
+
+# Receptors define the rows of G (observation locations).
+# For observations.mode=provided, include observed and optionally sigma.
+# This section is used only in input.mode=simulation_receptors.
+receptors:
+  - id: rec_west
+    lon: -122.2
+    lat: 38.9
+    observed: 1.2
+    sigma: 0.2
+
+  - id: rec_central
+    lon: -121.7
+    lat: 39.1
+    observed: 1.5
+    sigma: 0.2
+
+  - id: rec_north
+    lon: -121.4
+    lat: 39.8
+    observed: 1.0
+    sigma: 0.2
+
+observations:
+  # provided | synthetic_from_truth
+  # In input.mode=instrument_netcdf, y_obs/noise_variance come from
+  # instrument_netcdf, and this section is only used as a fallback default_sigma
+  # when noise_variance is missing.
+  mode: provided
+  default_sigma: 0.2
+
+  # Used only when mode=synthetic_from_truth.
+  # truth_flux_kg_s: [0.0002, 0.0001, 0.0003]
+  # add_noise: true
+  # random_seed: 42
+
+inversion:
+  # linear uses oe_from_linear; nonlinear uses optimize_oe with F(x)=G@x.
+  method: linear
+
+  # Prior flux can be scalar or vector length n_sources.
+  prior_flux_kg_s: 0.0
+
+  # Use either prior_covariance_diag (vector) or prior_variance (scalar) or
+  # fallback prior_sigma_fraction * |prior_flux|.
+  prior_variance: 1.0e-8
+  prior_sigma_fraction: 0.5
+
+  # Nonlinear solver settings (only used if method=nonlinear)
+  n_iter: 20
+  lam0: 1.0e-3
+  lam_factor: 10.0
+  eps: 1.0e-4
+  fd_step: 1.0e-5
+
+output:
+  summary_json: ../outputs/flux_inversion_summary.json
+  matrices_npz: ../outputs/flux_inversion_matrices.npz
+  posterior_csv: ../outputs/flux_posterior.csv

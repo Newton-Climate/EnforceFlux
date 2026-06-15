@@ -1,0 +1,40 @@
+# ERA5 meteorology download — April 1-7 2020 (7-day window).
+#
+# Extending beyond the 2-day april window already downloaded to get a
+# statistically better sample of wind conditions.  Averaging FLEXPART
+# backward footprints over 7 days captures multiple synoptic regimes and
+# avoids the near-calm anomaly on April 1-2 dominating the result.
+#
+# Usage:
+#   python apps/met_main.py --config apps/met_april_week.yaml
+
+meteo:
+  output_dir: ../runs/sacramento_valley_2020/meteo_april_week
+  available_filename: AVAILABLE
+
+era5:
+  # One buffer day before/after the 7-day simulation window.
+  start: "2020-03-31T00:00:00"
+  end:   "2020-04-08T00:00:00"
+
+  timestep_hours: 3
+  vertical_mode: model_levels
+  pressure_levels: []
+
+  model_level_grid_deg: 0.25
+  model_level_allow_global_fallback: false
+  cleanup_raw_daily_grib: false
+
+  # Same bounding box as the existing Sacramento Valley runs.
+  bbox:
+    lon_min: -122.5
+    lat_min:  38.6
+    lon_max: -121.0
+    lat_max:  39.8
+
+credentials:
+  # cdsapirc: ~/.cdsapirc
+
+run:
+  skip_if_available_covers_window: true
+  check_timestep_hours: 3

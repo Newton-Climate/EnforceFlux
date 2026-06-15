@@ -1,0 +1,33 @@
+# YAML config for apps/analysis_main.py
+
+input:
+  # Set to either simulation or instrument output.
+  netcdf: ../outputs/instrument_main.nc
+  kind: auto  # auto | simulation | instrument
+  simulation_variable_names: [ch4_mixing_ratio, ch4_concentration]
+
+analysis:
+  # Used for instrument analysis when no prior_covariance_diag list is supplied.
+  prior_variance: 1.0
+  # prior_covariance_diag: [1.0, 1.0, 1.0]
+
+visualization:
+  enabled: true
+  directory: ../outputs/analysis_plots
+  time_index: 0
+  level_index: 0
+  release_index: 0
+  wind_rose:
+    enabled: false
+    # Optional: if omitted, uses input.netcdf above.
+    # netcdf: ../runs/sacramento_valley_2020/meteo_july/ERA5_20200701.nc
+    u_var: u10
+    v_var: v10
+    n_dir_bins: 16
+    calm_threshold: 0.2
+    title: Wind Rose
+    cmap: viridis
+    output_name: wind_rose.png
+
+output:
+  summary_json: ../outputs/analysis_summary.json

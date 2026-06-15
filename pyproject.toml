@@ -9,8 +9,10 @@ dependencies = ["numpy", "pyproj", "netCDF4"]
 enforceflux = "enforceflux.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "pytest-cov", "ruff", "mypy"]
 meteo = ["cdsapi", "eccodes"]
+analysis = ["matplotlib", "scipy", "xarray", "pandas", "rasterio", "cartopy", "shapely"]
+all = ["enforceflux[dev,meteo,analysis]"]
 
 [project.entry-points."enforceflux.source"]
 static = "enforceflux.plugins.source_static:StaticSourceModel"
