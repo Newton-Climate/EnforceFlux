@@ -1,6 +1,8 @@
-.PHONY: env install install-flexpart figures lint format test clean
+.PHONY: env install install-dev install-flexpart figures lint format test clean
 
 VENV ?= .venv
+PYTHON ?= $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
+PIP ?= $(PYTHON) -m pip
 
 FLEXPART_REPO = https://gitlab.phaidra.org/flexpart/flexpart.git
 FLEXPART_DIR  = flexpart
@@ -16,12 +18,16 @@ LIBRARY_PATH_FLEXPART = $(ECCODES_PREFIX)/lib:$(NETCDF_PREFIX)/lib:$(NETCDFF_LIB
 # Create a local virtual environment (.venv) and upgrade build tooling
 env:
 	python3 -m venv $(VENV)
-	$(VENV)/bin/pip install --upgrade pip setuptools wheel
+	$(VENV)/bin/python -m pip install --upgrade pip setuptools wheel
 	@echo "Activate with: source $(VENV)/bin/activate"
 
 # Full install: Python package (all extras) + FLEXPART binary
 install: install-flexpart
-	pip install -e ".[all]"
+	$(PIP) install -e ".[all]"
+
+# Lightweight install for local development and test discovery (entry points)
+install-dev:
+	$(PIP) install -e ".[dev]"
 
 # Clone (if absent) and compile FLEXPART
 install-flexpart:
@@ -41,7 +47,7 @@ install-flexpart:
 # Regenerate the single-source instrument OSSE figures (Gaussian plume,
 # self-contained — no ERA5/FLEXPART required). Needs the .[analysis] extra.
 figures:
-	python examples/single_source_instrument_demo.py
+	$(PYTHON) examples/single_source_instrument_demo.py
 
 lint:
 	ruff check src/ tests/
@@ -53,8 +59,8 @@ format:
 
 # Skip flexpart_integration tests by default; pass MARKERS='' to run all
 MARKERS ?= not flexpart_integration
-test:
-	pytest tests/ -v -m "$(MARKERS)" --cov=src --cov-report=term-missing
+test: install-dev
+	$(PYTHON) -m pytest tests/ -v -m "$(MARKERS)" --cov=src --cov-report=term-missing
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

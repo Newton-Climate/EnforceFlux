@@ -16,8 +16,6 @@ Integration tests (marked flexpart_integration — require FLEXPART binary + met
       Validates that backward-mode footprint equals the forward
       source-receptor sensitivity for the same source-receptor pair.
 """
-from __future__ import annotations
-
 import dataclasses
 import math
 import re
@@ -27,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from enforceflux.config import DomainConfig
+from enforceflux.models.config import DomainConfig
 from enforceflux.flexpart import (
     FOOTPRINT_TO_JACOBIAN,
     FlexpartBackwardRunner,
@@ -35,7 +33,7 @@ from enforceflux.flexpart import (
     load_simulation_config,
 )
 from enforceflux.flexpart.simulation import PointSource, SimulationConfig
-from enforceflux.models.instrument import Instrument
+from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
@@ -282,6 +280,96 @@ class TestBackwardReleasesContent:
     def test_releases_species_number_written(self, tmp_path):
         text = self._run_and_read_releases(tmp_path)
         assert "SPECNUM_REL=          24," in text
+
+
+# ─── Unit tests: registry dispatch via FlexpartTransportOperator ─────────────
+
+class TestRegistryBackwardDispatch:
+    """The registry-facing plugin routes mode='backward' to FlexpartBackwardRunner."""
+
+    def _write_sim_config_yaml(self, tmp_path: Path) -> Path:
+        """Write a minimal SimulationConfig YAML for backward dry runs."""
+        yaml_path = tmp_path / "sim_config.yaml"
+        yaml_path.write_text(
+            "flexpart:\n"
+            f"  executable: {(_BINARY).resolve()}\n"
+            f"  options_dir: {_OPTIONS.resolve()}\n"
+            f"  available_file: {_AVAILABLE.resolve()}\n"
+            f"  meteo_dir: {_METEO.resolve()}\n"
+            f"  run_dir: {(tmp_path / 'sim_run').resolve()}\n"
+            "simulation:\n"
+            "  start: '2009-01-01T00:00:00'\n"
+            "  end: '2009-01-01T03:00:00'\n"
+            "  nxshift: 0\n"
+            "domain:\n"
+            "  lon_min: -25.0\n"
+            "  lon_max: 60.0\n"
+            "  lat_min: 10.0\n"
+            "  lat_max: 75.0\n"
+            "  dx: 1.0\n"
+            "  dy: 1.0\n"
+            "  heights_m: [100.0, 500.0, 1000.0, 50000.0]\n"
+        )
+        return yaml_path
+
+    def _plugin(self):
+        from enforceflux.utils.plugin_registry import get_plugin
+        from enforceflux.core.base import ITransportOperator
+
+        return get_plugin(
+            "enforceflux.transport_operator", "flexpart", ITransportOperator
+        )()
+
+    def test_backward_dispatch_returns_correct_shape(self, tmp_path):
+        plugin = self._plugin()
+        result = plugin.build_forward_operator(
+            [_source(), _source(lon=6.5)],
+            [_instrument()],
+            _wgs84_domain(),
+            {
+                "mode": "backward",
+                "sim_config": str(self._write_sim_config_yaml(tmp_path)),
+                "base_run_dir": str((tmp_path / "bwd_runs").resolve()),
+                "dry_run": True,
+            },
+        )
+        assert result.g.shape == (1, 2)
+        assert result.meta["mode"] == "backward"
+
+    def test_backward_unit_conversion_applied(self, tmp_path):
+        """Supplying source_areas_m2 converts the raw footprint to physical units."""
+        plugin = self._plugin()
+        # dry_run yields a zero G, so check that meta reports the physical units
+        # and mixing height (the conversion path executed without raising).
+        result = plugin.build_forward_operator(
+            [_source()],
+            [_instrument()],
+            _wgs84_domain(),
+            {
+                "mode": "backward",
+                "sim_config": str(self._write_sim_config_yaml(tmp_path)),
+                "base_run_dir": str((tmp_path / "bwd_runs").resolve()),
+                "dry_run": True,
+                "source_areas_m2": [_grid_cell_area_m2(_SOURCE_LAT)],
+                "mixing_height_m": 100.0,
+            },
+        )
+        assert result.meta["units"] == "ng m-3 / (kg s-1)"
+        assert result.meta["mixing_height_m"] == 100.0
+
+    def test_backward_requires_sim_config(self, tmp_path):
+        plugin = self._plugin()
+        with pytest.raises(ValueError, match="sim_config"):
+            plugin.build_forward_operator(
+                [_source()], [_instrument()], _wgs84_domain(), {"mode": "backward"}
+            )
+
+    def test_unknown_mode_raises(self, tmp_path):
+        plugin = self._plugin()
+        with pytest.raises(ValueError, match="Unknown FLEXPART transport mode"):
+            plugin.build_forward_operator(
+                [_source()], [_instrument()], _wgs84_domain(), {"mode": "sideways"}
+            )
 
 
 # ─── Integration tests ────────────────────────────────────────────────────────

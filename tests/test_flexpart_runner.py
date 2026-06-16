@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from enforceflux.config import DomainConfig
+from enforceflux.models.config import DomainConfig
 from enforceflux.flexpart.build import FlexpartCompiler
 from enforceflux.flexpart.runner import FlexpartRunner
 from enforceflux.flexpart.wrapper import FlexpartWrapper
-from enforceflux.models.instrument import Instrument
+from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
 
 

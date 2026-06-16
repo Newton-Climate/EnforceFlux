@@ -13,8 +13,6 @@ Integration tests (marked flexpart_integration — require FLEXPART binary + met
     - Forward diffuse-source simulation runs and produces non-zero concentration.
     - Concentration scales linearly with emission rate (2× rate → 2× concentration).
 """
-from __future__ import annotations
-
 import dataclasses
 import math
 import re
@@ -335,7 +333,7 @@ class TestFlexpartRunnerMass:
         unit_emission_rate is now in kg/s.
         RELEASES MASS = unit_emission_rate × (end - start) seconds.
         """
-        from enforceflux.config import DomainConfig
+        from enforceflux.models.config import DomainConfig
 
         domain = DomainConfig(
             x_min=0, x_max=1000, y_min=0, y_max=1000,
@@ -370,7 +368,7 @@ class TestFlexpartRunnerMass:
 
     def test_releases_mass_scales_with_unit_rate(self, tmp_path):
         """Doubling unit_emission_rate should double MASS in RELEASES."""
-        from enforceflux.config import DomainConfig
+        from enforceflux.models.config import DomainConfig
 
         domain = DomainConfig(
             x_min=0, x_max=1, y_min=0, y_max=1,

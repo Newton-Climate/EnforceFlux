@@ -3,13 +3,13 @@ name = "enforceflux"
 version = "0.1.0"
 description = "OSSE framework for methane flux monitoring systems"
 requires-python = ">=3.10"
-dependencies = ["numpy", "pyproj", "netCDF4"]
+dependencies = ["numpy", "pyproj", "netCDF4", "pytest-cov"]
 
 [project.scripts]
 enforceflux = "enforceflux.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "ruff", "mypy"]
+dev = ["pytest", "ruff", "mypy"]
 meteo = ["cdsapi", "eccodes"]
 analysis = ["matplotlib", "scipy", "xarray", "pandas", "rasterio", "cartopy", "shapely"]
 all = ["enforceflux[dev,meteo,analysis]"]
@@ -20,12 +20,20 @@ static = "enforceflux.plugins.source_static:StaticSourceModel"
 [project.entry-points."enforceflux.instrument"]
 static = "enforceflux.plugins.instrument_static:StaticInstrumentModel"
 
-[project.entry-points."enforceflux.transport"]
-gaussian = "enforceflux.plugins.transport_gaussian:GaussianTransportModel"
-flexpart = "enforceflux.plugins.transport_flexpart:FlexpartTransportModel"
+[project.entry-points."enforceflux.transport_operator"]
+gaussian = "enforceflux.plugins.transport_gaussian:GaussianTransportOperator"
+flexpart = "enforceflux.plugins.transport_flexpart:FlexpartTransportOperator"
+
+[project.entry-points."enforceflux.transport_simulation"]
+flexpart = "enforceflux.plugins.simulation_flexpart:FlexpartSimulationModel"
 
 [project.entry-points."enforceflux.inversion"]
 bayesian = "enforceflux.plugins.inversion_bayesian:BayesianInversionEngine"
+
+[project.entry-points."enforceflux.flux"]
+inversion = "enforceflux.flux.inversion_estimator:InversionFluxEstimator"
+eddy_covariance = "enforceflux.flux.eddy_covariance:EddyCovarianceFluxEstimator"
+flux_gradient = "enforceflux.flux.flux_gradient:FluxGradientFluxEstimator"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
