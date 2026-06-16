@@ -1,6 +1,4 @@
 """Shared matplotlib helpers for analysis visualization modules."""
-from __future__ import annotations
-
 try:
     import matplotlib.pyplot as plt
     import matplotlib.ticker as mticker

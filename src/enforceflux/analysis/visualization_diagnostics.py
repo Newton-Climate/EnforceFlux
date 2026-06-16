@@ -1,6 +1,4 @@
 """Diagnostics and multi-panel plotting utilities for inversion analysis."""
-from __future__ import annotations
-
 from typing import Sequence
 
 import numpy as np
@@ -130,10 +128,10 @@ def plot_inversion_summary(
     snames = source_names or oe_result.source_names
 
     x_true = getattr(oe_result, "x_true", None)
-    post_sigma = (np.sqrt(np.diag(oe_result.Sx))
-                  if oe_result.Sx is not None else None)
+    post_sigma = (np.sqrt(np.diag(oe_result.posterior_cov))
+                  if oe_result.posterior_cov is not None else None)
     plot_flux_comparison(
-        oe_result.x_prior, oe_result.x_opt,
+        oe_result.x_prior, oe_result.x_posterior,
         x_true=x_true,
         source_names=snames,
         posterior_sigma=post_sigma,
@@ -175,7 +173,7 @@ def plot_inversion_summary(
     plot_concentration_timeseries(
         oe_result.y_obs,
         oe_result.y_prior,
-        oe_result.y_opt,
+        oe_result.y_posterior,
         ax=axes[1, 2],
         title="Observation fit",
     )

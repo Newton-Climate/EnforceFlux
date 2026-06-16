@@ -12,8 +12,6 @@ db       : OperatorParams dataclass + INSTRUMENT_DB constant
 models   : Instrument deployment dataclass
 operator : ObservationResult + InstrumentOperator
 """
-from __future__ import annotations
-
 from enforceflux.instrument.db import INSTRUMENT_DB, OperatorParams
 from enforceflux.instrument.models import Instrument
 from enforceflux.instrument.operator import InstrumentOperator, ObservationResult

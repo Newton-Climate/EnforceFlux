@@ -1,6 +1,4 @@
 """Core matrix utilities and primary information-metric computations."""
-from __future__ import annotations
-
 import numpy as np
 
 from enforceflux.analysis.information_models import DofResult, FisherResult, PosteriorResult

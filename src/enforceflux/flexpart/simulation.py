@@ -1,6 +1,4 @@
 """YAML-driven FLEXPART simulation: file preparation, execution, output post-processing."""
-from __future__ import annotations
-
 import os
 import shutil
 import subprocess

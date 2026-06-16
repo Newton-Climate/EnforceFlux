@@ -1,17 +1,7 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-
+"""Bayesian linear inversion (closed-form Gaussian posterior)."""
 import numpy as np
 
-
-@dataclass(frozen=True)
-class InversionResult:
-    x_posterior: np.ndarray
-    posterior_cov: np.ndarray
-    averaging_kernel: np.ndarray
-    fisher_information: np.ndarray
-    residual: np.ndarray
+from enforceflux.inversion.result import InversionResult
 
 
 def _as_covariance(matrix_or_diag: np.ndarray) -> np.ndarray:
@@ -27,6 +17,7 @@ def bayesian_linear_inversion(
     x_prior: np.ndarray,
     s_a: np.ndarray,
     r: np.ndarray,
+    source_names: list[str] | None = None,
 ) -> InversionResult:
     """Compute the Bayesian linear inversion.
 
@@ -50,14 +41,24 @@ def bayesian_linear_inversion(
 
     posterior_cov = np.linalg.inv(s_a_inv + fisher)
     gain = posterior_cov @ g.T @ r_inv
-    x_post = x_prior + gain @ (y - g @ x_prior)
+    y_prior = g @ x_prior
+    x_post = x_prior + gain @ (y - y_prior)
     averaging_kernel = gain @ g
-    residual = y - g @ x_post
+    y_post = g @ x_post
+    residual = y - y_post
 
     return InversionResult(
         x_posterior=x_post,
+        x_prior=x_prior,
         posterior_cov=posterior_cov,
         averaging_kernel=averaging_kernel,
+        y_obs=y,
+        y_prior=y_prior,
+        y_posterior=y_post,
         fisher_information=fisher,
         residual=residual,
+        cost_history=[],
+        converged=True,
+        n_iter=1,
+        source_names=source_names,
     )

@@ -1,6 +1,4 @@
 """SimulationConfig dataclass and YAML loader for FLEXPART runs."""
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path

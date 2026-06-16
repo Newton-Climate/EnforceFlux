@@ -4,8 +4,6 @@
 Usage:
     python apps/met_main.py --config apps/met_main.yaml
 """
-from __future__ import annotations
-
 import argparse
 import os
 from pathlib import Path

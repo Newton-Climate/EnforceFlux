@@ -1,20 +1,18 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 import numpy as np
 
-from enforceflux.config import ProjectConfig
+from enforceflux.models.config import ProjectConfig
 from enforceflux.core.base import (
     ForwardModelResult,
     IInversionEngine,
     IInstrumentModel,
     ISourceModel,
-    ITransportModel,
+    ITransportOperator,
 )
-from enforceflux.metrics import MetricResults, compute_metrics
+from enforceflux.analysis.metrics import MetricResults, compute_metrics
 from enforceflux.instrument import InstrumentOperator
-from enforceflux.retrieval.inversion import InversionResult
+from enforceflux.inversion.result import InversionResult
 from enforceflux.utils.plugin_registry import get_plugin, normalize_plugin_name
 
 
@@ -31,7 +29,7 @@ class OSSEOutput:
 def run_osse(config: ProjectConfig) -> OSSEOutput:
     source_component = config.component("source")
     instrument_component = config.component("instrument")
-    transport_component = config.component("transport")
+    transport_component = config.component("transport_operator")
     inversion_component = config.component("inversion")
 
     source_plugin_name = normalize_plugin_name(
@@ -41,7 +39,7 @@ def run_osse(config: ProjectConfig) -> OSSEOutput:
         "enforceflux.instrument", instrument_component.plugin
     )
     transport_plugin_name = normalize_plugin_name(
-        "enforceflux.transport", transport_component.plugin
+        "enforceflux.transport_operator", transport_component.plugin
     )
     inversion_plugin_name = normalize_plugin_name(
         "enforceflux.inversion", inversion_component.plugin
@@ -52,7 +50,7 @@ def run_osse(config: ProjectConfig) -> OSSEOutput:
         "enforceflux.instrument", instrument_plugin_name, IInstrumentModel
     )
     transport_cls = get_plugin(
-        "enforceflux.transport", transport_plugin_name, ITransportModel
+        "enforceflux.transport_operator", transport_plugin_name, ITransportOperator
     )
     inversion_cls = get_plugin(
         "enforceflux.inversion", inversion_plugin_name, IInversionEngine

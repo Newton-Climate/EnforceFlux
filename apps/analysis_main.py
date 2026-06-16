@@ -4,8 +4,6 @@
 Usage:
     python apps/analysis_main.py --config apps/analysis_main.yaml
 """
-from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path

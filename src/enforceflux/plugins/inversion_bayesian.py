@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 import numpy as np
 
 from enforceflux.core.base import IInversionEngine
-from enforceflux.retrieval.inversion import InversionResult, bayesian_linear_inversion
+from enforceflux.inversion.bayesian import bayesian_linear_inversion
+from enforceflux.inversion.result import InversionResult
 
 
 class BayesianInversionEngine(IInversionEngine):

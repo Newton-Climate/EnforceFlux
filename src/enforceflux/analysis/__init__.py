@@ -1,5 +1,5 @@
 """
-enforceflux.analysis — optimal estimation, information metrics, and visualization.
+enforceflux.analysis — information metrics and visualization.
 
 Submodules
 ----------
@@ -7,13 +7,12 @@ information
     Fisher Information Matrix, averaging kernel, degrees of freedom for signal
     (DFS), posterior covariance, and observation ablation studies.
 
-optimal_estimation
-    Levenberg-Marquardt nonlinear OE inversion (``optimize_oe``) and a linear
-    Bayesian wrapper (``oe_from_linear``).
-
 visualization
     Matplotlib-based plots for forward operators, averaging kernels, DFS bars,
     flux comparisons, concentration timeseries, and multi-panel summaries.
+
+Optimal-estimation and Bayesian inversion algorithms moved to
+``enforceflux.inversion``.
 """
 from enforceflux.analysis.information import (
     FisherResult,
@@ -27,11 +26,7 @@ from enforceflux.analysis.information import (
     run_ablation_study,
     summarize_ablation,
 )
-from enforceflux.analysis.optimal_estimation import (
-    OEResult,
-    optimize_oe,
-    oe_from_linear,
-)
+from enforceflux.analysis.metrics import MetricResults, compute_metrics
 from enforceflux.analysis.visualization import (
     plot_forward_operator,
     plot_averaging_kernel,
@@ -68,10 +63,9 @@ __all__ = [
     "analyze_information_content",
     "run_ablation_study",
     "summarize_ablation",
-    # optimal_estimation
-    "OEResult",
-    "optimize_oe",
-    "oe_from_linear",
+    # metrics
+    "MetricResults",
+    "compute_metrics",
     # visualization
     "plot_forward_operator",
     "plot_averaging_kernel",

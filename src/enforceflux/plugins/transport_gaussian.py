@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 from typing import Any, Iterable
 
-from enforceflux.core.base import ForwardModelResult, ITransportModel
-from enforceflux.models.instrument import Instrument
+from enforceflux.core.base import ForwardModelResult, ITransportOperator
+from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
 from enforceflux.models.transport import GaussianTransport
 
@@ -14,7 +12,7 @@ def _require_keys(blob: dict, keys: list[str], context: str) -> None:
         raise ValueError(f"Missing keys in {context}: {missing}")
 
 
-class GaussianTransportModel(ITransportModel):
+class GaussianTransportOperator(ITransportOperator):
     def build_forward_operator(
         self,
         sources: Iterable[Source],

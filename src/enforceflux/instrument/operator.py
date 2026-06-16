@@ -2,8 +2,6 @@
 InstrumentOperator: applies the spatial forward operator H and heteroscedastic
 noise model to a FLEXPART G-matrix, producing simulated OSSE observations.
 """
-from __future__ import annotations
-
 import math
 from dataclasses import dataclass
 

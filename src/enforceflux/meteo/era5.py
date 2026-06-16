@@ -22,8 +22,6 @@ Usage::
     )
     # available_file → Path("inputs/meteo/AVAILABLE")
 """
-from __future__ import annotations
-
 import calendar
 import logging
 from dataclasses import dataclass, field

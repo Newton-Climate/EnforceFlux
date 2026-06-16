@@ -4,8 +4,6 @@
 Usage:
     python apps/simulation_main.py --config apps/simulation_main.yaml
 """
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 import sys
@@ -51,7 +49,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    from enforceflux.flexpart import FlexpartSimulation
+    from enforceflux.core.base import ITransportSimulation
+    from enforceflux.flexpart.sim_config import load_simulation_config
+    from enforceflux.utils.plugin_registry import get_plugin
 
     parser = build_parser()
     args = parser.parse_args()
@@ -60,27 +60,40 @@ def main() -> None:
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    sim = FlexpartSimulation.from_yaml(config_path)
     mode = _load_mode(config_path)
-    sim.config.ldirect = 1 if mode == "forward" else -1
+    ldirect = 1 if mode == "forward" else -1
+
+    # Load the config for the run summary; execution goes through the registry.
+    sim_config = load_simulation_config(config_path)
 
     print("EnforceFlux simulation_main")
     print(f"Config     : {config_path}")
-    print(f"Mode       : {mode} (ldirect={sim.config.ldirect})")
+    print(f"Mode       : {mode} (ldirect={ldirect})")
     print(
-        f"Window     : {sim.config.start.isoformat()} -> {sim.config.end.isoformat()}"
+        f"Window     : {sim_config.start.isoformat()} -> {sim_config.end.isoformat()}"
     )
-    print(f"Sources    : {len(sim.config.sources)}")
-    print(f"Run dir    : {sim.config.run_dir}")
-    print(f"Output NC  : {sim.config.output_path}")
+    print(f"Sources    : {len(sim_config.sources)}")
+    print(f"Run dir    : {sim_config.run_dir}")
+    print(f"Output NC  : {sim_config.output_path}")
+
+    simulation = get_plugin(
+        "enforceflux.transport_simulation", "flexpart", ITransportSimulation
+    )()
+    result = simulation.simulate(
+        [],
+        None,
+        {
+            "sim_config": str(config_path),
+            "ldirect": ldirect,
+            "dry_run": args.prepare_only,
+        },
+    )
 
     if args.prepare_only:
-        run_dir = sim.prepare()
-        print(f"Prepared FLEXPART input files in: {run_dir}")
+        print(f"Prepared FLEXPART input files in: {result.meta['run_dir']}")
         return
 
-    output_nc = sim.run()
-    print(f"Simulation complete. Wrote: {output_nc}")
+    print(f"Simulation complete. Wrote: {result.output_path}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,4 @@
 """Type aliases for instrument observable and operator kinds."""
-from __future__ import annotations
-
 from typing import Literal
 
 ObservableType = Literal[

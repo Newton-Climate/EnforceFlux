@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 import shutil
 import subprocess
@@ -10,8 +8,8 @@ from typing import Any, Iterable
 
 import numpy as np
 
-from enforceflux.config import DomainConfig
-from enforceflux.models.instrument import Instrument
+from enforceflux.models.config import DomainConfig
+from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
 
 

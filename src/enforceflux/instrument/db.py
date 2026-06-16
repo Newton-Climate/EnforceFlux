@@ -4,8 +4,6 @@ Instrument parameter database.
 All values sourced from data/methane_monitoring_tech_comparison.xlsx
 (sheets: Comparison and OSSE_Modes).
 """
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from enforceflux.instrument.types import ObservableType, OperatingMode, OperatorType

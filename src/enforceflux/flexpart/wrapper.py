@@ -1,13 +1,11 @@
-from __future__ import annotations
-
 import subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
-from enforceflux.config import DomainConfig
+from enforceflux.models.config import DomainConfig
 from enforceflux.flexpart.build import FlexpartBuildResult, FlexpartCompiler
 from enforceflux.flexpart.runner import FlexpartRunResult, FlexpartRunner
-from enforceflux.models.instrument import Instrument
+from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
 
 

@@ -1,11 +1,9 @@
 """Nonlinear optimal-estimation solver (Levenberg-Marquardt)."""
-from __future__ import annotations
-
 from typing import Callable
 
 import numpy as np
 
-from enforceflux.analysis.optimal_models import OEResult
+from enforceflux.inversion.result import InversionResult
 
 
 def _numerical_jacobian(
@@ -47,7 +45,7 @@ def optimize_oe(
     eps: float = 1e-4,
     fd_step: float = 1e-5,
     source_names: list[str] | None = None,
-) -> OEResult:
+) -> InversionResult:
     """Nonlinear Optimal Estimation via Levenberg-Marquardt."""
     y = np.asarray(y, dtype=float)
     xa = np.asarray(x_prior, dtype=float)
@@ -115,14 +113,14 @@ def optimize_oe(
         Sx = np.linalg.pinv(H_f)
     A = Sx @ KtSeK_f
 
-    return OEResult(
-        x_opt=x,
+    return InversionResult(
+        x_posterior=x,
         x_prior=xa,
-        Sx=Sx,
+        posterior_cov=Sx,
         averaging_kernel=A,
         y_obs=y,
         y_prior=y_prior,
-        y_opt=np.asarray(F(x), dtype=float),
+        y_posterior=np.asarray(F(x), dtype=float),
         cost_history=cost_hist,
         converged=converged,
         n_iter=len(cost_hist),

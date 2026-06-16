@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,55 +57,21 @@ def _component_from_dict(blob: dict, context: str) -> ComponentConfig:
     return ComponentConfig(plugin=str(blob["plugin"]), config=dict(blob.get("config", {})))
 
 
-def _legacy_to_components(data: dict) -> dict[str, ComponentConfig]:
-    _require_keys(data, ["sources", "instruments", "transport"], "legacy config")
-
-    transport = data["transport"]
-    _require_keys(transport, ["model", "sigma", "wind"], "transport")
-    wind = list(transport["wind"])
-    if len(wind) != 2:
-        raise ValueError("transport.wind must be a 2-element list [vx, vy]")
-
-    return {
-        "source": ComponentConfig(
-            plugin="enforceflux.source.static",
-            config={"sources": data["sources"]},
-        ),
-        "instrument": ComponentConfig(
-            plugin="enforceflux.instrument.static",
-            config={"instruments": data["instruments"]},
-        ),
-        "transport": ComponentConfig(
-            plugin=f"enforceflux.transport.{transport['model'].lower()}",
-            config={
-                "model": transport["model"],
-                "sigma": float(transport["sigma"]),
-                "wind": [float(wind[0]), float(wind[1])],
-            },
-        ),
-        "inversion": ComponentConfig(
-            plugin="enforceflux.inversion.bayesian",
-            config=dict(data.get("inversion", {})),
-        ),
-    }
-
-
 def load_config(path: str | Path) -> ProjectConfig:
     path = Path(path)
     data = json.loads(path.read_text())
-    _require_keys(data, ["domain"], "config")
+    _require_keys(data, ["domain", "components"], "config")
 
     domain = _domain_from_dict(data["domain"])
 
-    if "components" in data:
-        blob = data["components"]
-        _require_keys(blob, ["source", "instrument", "transport", "inversion"], "components")
-        components = {
-            name: _component_from_dict(blob[name], f"components.{name}")
-            for name in ["source", "instrument", "transport", "inversion"]
-        }
-    else:
-        components = _legacy_to_components(data)
+    blob = data["components"]
+    _require_keys(
+        blob, ["source", "instrument", "transport_operator", "inversion"], "components"
+    )
+    components = {
+        name: _component_from_dict(blob[name], f"components.{name}")
+        for name in ["source", "instrument", "transport_operator", "inversion"]
+    }
 
     return ProjectConfig(
         domain=domain,

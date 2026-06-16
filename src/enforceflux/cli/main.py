@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import argparse
 
-from enforceflux.config import load_config
+from enforceflux.models.config import load_config
 from enforceflux.osse import run_osse
 
 

@@ -4,8 +4,6 @@
 Usage:
     python apps/instrument_main.py --config apps/instrument_main.yaml
 """
-from __future__ import annotations
-
 import argparse
 import csv
 from pathlib import Path

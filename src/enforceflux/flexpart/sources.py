@@ -1,6 +1,4 @@
 """FLEXPART source types: point and diffuse emission sources."""
-from __future__ import annotations
-
 import math
 from dataclasses import dataclass
 from datetime import datetime

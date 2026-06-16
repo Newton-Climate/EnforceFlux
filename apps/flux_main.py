@@ -4,8 +4,6 @@
 Usage:
     python apps/flux_main.py --config apps/flux_main.yaml
 """
-from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path
@@ -29,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    from enforceflux.analysis.optimal_estimation import oe_from_linear, optimize_oe
+    from enforceflux.inversion import oe_from_linear, optimize_oe
     from flux_helpers import build_prior, require_yaml
     from flux_inputs import build_from_instrument_mode, build_from_receptors_mode
     from flux_outputs import write_flux_outputs
@@ -96,7 +94,7 @@ def main() -> None:
         "method": method,
         "observation_mode": obs_meta,
         "x_prior_kg_s": x_prior.tolist(),
-        "x_opt_kg_s": np.asarray(result.x_opt, dtype=float).tolist(),
+        "x_opt_kg_s": np.asarray(result.x_posterior, dtype=float).tolist(),
         "converged": bool(result.converged),
         "n_iter": int(result.n_iter),
         "outputs": {

@@ -1,6 +1,4 @@
 """Wind-rose utilities for directional wind-frequency visualization."""
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Sequence
 

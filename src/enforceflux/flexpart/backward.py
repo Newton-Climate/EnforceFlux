@@ -52,8 +52,6 @@ Usage
     G = FlexpartBackwardRunner.to_jacobian(result.g, source_areas_m2)
     # G[i,j] is now in [ng m⁻³ / (kg s⁻¹)]
 """
-from __future__ import annotations
-
 import dataclasses
 import os
 import shutil
@@ -63,10 +61,10 @@ from typing import Any
 
 import numpy as np
 
-from enforceflux.config import DomainConfig
+from enforceflux.models.config import DomainConfig
 from enforceflux.flexpart.runner import FlexpartRunResult
 from enforceflux.flexpart.simulation import FlexpartSimulation, SimulationConfig
-from enforceflux.models.instrument import Instrument
+from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
 
 # Multiply raw footprint [s m³ kg⁻¹] by this to get [ng m⁻³ / (kg s⁻¹)]

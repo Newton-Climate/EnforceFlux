@@ -1,6 +1,4 @@
 """Ablation-study workflows built on top of core information metrics."""
-from __future__ import annotations
-
 import numpy as np
 
 from enforceflux.analysis.information_core import _group_fim, compute_dof, compute_posterior
