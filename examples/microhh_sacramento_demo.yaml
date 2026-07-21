@@ -1,0 +1,80 @@
+# MicroHH plume demo — reduced-resolution Sacramento single methane source.
+#
+# Small, fast sibling of microhh_sacramento.yaml: a 192x96x64 box at 20 m
+# resolution (~1.2M cells) that runs in minutes on a laptop, to validate the
+# end-to-end pipeline (init -> run -> cross-section plume) — analogous to
+# examples/gaussian_plume_single_source_demo.py for FLEXPART.
+#
+# Physics follows MicroHH's cases/dispersion: passive scalar from a Gaussian
+# blob in a dry convective boundary layer, mean wind along +x with lateral
+# inflow/outflow so the plume advects downwind.
+
+microhh:
+  executable: ../microhh/build/microhh
+  case_dir:   ../runs/microhh_sacramento_demo/
+
+simulation:
+  name: sacramento_ch4_demo
+  start: "2020-03-31T00:00:00"
+  spinup_seconds: 1800        # 30 min turbulence spin-up
+  runtime_seconds: 3600       # 1 h release + sampling
+  sampletime: 60              # cross/column output cadence (s)
+
+# 3.84 x 1.92 x 2.048 km at 20 m horizontal / 32 m vertical.
+grid:
+  itot: 192
+  jtot: 96
+  ktot: 64
+  xsize: 3840.0
+  ysize: 1920.0
+  zsize: 2048.0
+
+domain:
+  origin_lon: -121.75
+  origin_lat: 39.15
+  x_bearing_deg: 68.0         # box +x points downwind (ENE)
+  source_x0: 576.0            # 0.15 * xsize (near upwind edge)
+  source_y0: 960.0            # 0.5 * ysize
+
+forcing:
+  u_geo: 3.0                  # mean wind along +x (m/s)
+  v_geo: 0.0
+  z0m: 0.1
+  z0h: 0.01
+  thl_surface_K: 300.0
+  thl_lapse_K_per_m: 0.003
+  boundary_layer_height_m: 1000.0
+  inversion_strength_K: 2.0
+  inversion_depth_m: 100.0
+  surface_heat_flux_K_m_s: 0.1
+
+species:
+  name: ch4
+  emission_scale: 1.0         # 1.0 = physically calibrated run (strength = kg/s)
+
+sources:
+  - id: sacramento_point
+    lon: -121.75
+    lat: 39.15
+    alt_m: 20.0
+    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr (physical; for later scaling)
+    sigma_x_m: 25.0
+    sigma_y_m: 25.0
+    sigma_z_m: 25.0
+
+instruments:
+  - id: sensor_ENE_axis
+    lon: -121.7446
+    lat:  39.1517
+    alt_m: 20.0
+  - id: sensor_NE
+    lon: -121.7460
+    lat:  39.1533
+    alt_m: 20.0
+  - id: sensor_E
+    lon: -121.7442
+    lat:  39.1498
+    alt_m: 20.0
+
+output:
+  path: ../runs/microhh_sacramento_demo/sacramento_ch4_demo.column.nc
