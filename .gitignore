@@ -17,6 +17,9 @@ runs/
 .pytest_cache/
 
 # FLEXPART build artifacts (keep src/*.f90 but not compiled objects)
+# Vendored MicroHH clone (see: make install-microhh)
+microhh/
+
 flexpart/src/*.o
 flexpart/src/*.mod
 flexpart/src/FLEXPART
