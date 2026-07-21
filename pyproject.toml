@@ -23,9 +23,11 @@ static = "enforceflux.plugins.instrument_static:StaticInstrumentModel"
 [project.entry-points."enforceflux.transport_operator"]
 gaussian = "enforceflux.plugins.transport_gaussian:GaussianTransportOperator"
 flexpart = "enforceflux.plugins.transport_flexpart:FlexpartTransportOperator"
+microhh = "enforceflux.plugins.transport_microhh:MicroHHTransportOperator"
 
 [project.entry-points."enforceflux.transport_simulation"]
 flexpart = "enforceflux.plugins.simulation_flexpart:FlexpartSimulationModel"
+microhh = "enforceflux.plugins.simulation_microhh:MicroHHSimulationModel"
 
 [project.entry-points."enforceflux.inversion"]
 bayesian = "enforceflux.plugins.inversion_bayesian:BayesianInversionEngine"
