@@ -1,0 +1,48 @@
+# Fine (~10 m) forward FLEXPART run, matched to the LES mean wind.
+# Small domain (~1.6 km) tightly around the source + 500 m sensors so a 10 m
+# output grid is tractable and well-sampled. Constant-wind matched met
+# (3 m/s @ 68 deg) so the mean transport matches the MicroHH LES.
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_april_week_matched/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_april_week_matched/
+  run_dir:       ../runs/flexpart_forward_sac_fine/flexpart_run/
+
+simulation:
+  start: "2020-03-31T00:00:00"
+  end:   "2020-03-31T02:00:00"     # 2 h — near field reaches steady state fast
+  output_step_seconds: 1800
+  sync_seconds: 300
+  nxshift: 0
+
+# ~1.9 x 2.2 km box around source at ~10 m resolution.
+domain:
+  lon_min: -121.762
+  lat_min:  39.142
+  lon_max: -121.738
+  lat_max:  39.162
+  dx: 0.0001      # ~8.6 m (lon at 39N)
+  dy: 0.0001      # ~11.1 m (lat)
+  heights_m: [20.0, 100.0, 500.0, 1000.0]
+
+species:
+  name: CH4
+  number: 24
+
+sources:
+  - type: point
+    id: sacramento_point_100kghr
+    lon: -121.75
+    lat:  39.15
+    alt_m: 20.0
+    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
+    n_particles: 10000000
+    start: "2020-03-31T00:00:00"
+    end:   "2020-03-31T02:00:00"
+
+output:
+  path: ../runs/flexpart_forward_sac_fine/flexpart_forward.nc
+  compress: true
+  per_source: false
