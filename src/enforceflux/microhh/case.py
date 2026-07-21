@@ -172,8 +172,8 @@ def build_ini(cfg: MicroHHConfig) -> str:
     a("[time]")
     a("starttime=0")
     a(f"endtime={total_time}")
-    a("dt=6.")
-    a("dtmax=60.")
+    a("dt=6.")                       # initial step; adaptivestep takes over
+    a(f"dtmax={cfg.dt_max_s:g}")     # hard cap on the adaptive timestep
     a("savetime=3600")
     a("outputiter=50")
     a("adaptivestep=true")

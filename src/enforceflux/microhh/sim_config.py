@@ -87,7 +87,10 @@ class MicroHHConfig:
     start: datetime
     spinup_s: int = 7200
     runtime_s: int = 21600
-    dt_max_s: float = 0.5
+    # Hard cap on the adaptive timestep (s). The actual step is usually set by
+    # the CFL limit, so this only bites in very slow flow; 60 s matches
+    # MicroHH's shipped cases.
+    dt_max_s: float = 60.0
     sampletime_s: int = 10
 
     scalar_name: str = "ch4"
@@ -193,7 +196,7 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
         start=_parse_dt(sim["start"]),
         spinup_s=int(sim.get("spinup_seconds", 7200)),
         runtime_s=int(sim.get("runtime_seconds", 21600)),
-        dt_max_s=float(sim.get("dt_max", 0.5)),
+        dt_max_s=float(sim.get("dt_max", 60.0)),
         sampletime_s=int(sim.get("sampletime", 10)),
         scalar_name=str(spec.get("name", "ch4")),
         emission_scale=float(spec.get("emission_scale", 1.0)),
