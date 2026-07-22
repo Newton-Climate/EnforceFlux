@@ -1,0 +1,126 @@
+# ============================================================================
+# Point leak vs diffuse paddy — one convective hour, Sacramento Valley
+# ============================================================================
+#   python examples/microhh_point_vs_diffuse.py --dry-run
+#   python examples/microhh_point_vs_diffuse.py
+#
+# A controlled two-run experiment: identical box, identical forcing, identical
+# random seed, and ONE variable — the emission geometry.
+#
+# WHY TWO RUNS IS A FAIR TEST
+# ---------------------------
+# MicroHH's case writer fixes rndseed=2 and perturbs only `th`, and ch4 is a
+# passive scalar under swthermo=dry — it exerts no buoyancy, so it cannot feed
+# back on the flow. Two runs that differ only in their source term therefore
+# integrate a BIT-IDENTICAL velocity and temperature field. Every difference in
+# the scalar is attributable to source geometry alone; none of it is eddy noise.
+# The driver checks this rather than trusting it, and prints the residual.
+#
+# THE CONDITION — 2020-03-31 18:00 UTC (11:00 PDT)
+# ------------------------------------------------
+#   H = +205 W m-2   the day's strongest surface heating
+#   U  = 3.15 m/s    from 160 deg, so downwind is toward 340 deg
+#   BL = 822 m       w* = 1.68 m/s, w*/U = 0.53 — convective, plume both
+#                    lofts and meanders rather than running flat downwind
+#
+# Because the boundary layer is only 822 m, this uses ktot 64 / zsize 2048
+# (sponge from ~1536 m, well clear) rather than the taller box the full diurnal
+# run needs for its 2014 m afternoon BL.
+#
+# THE TWO SOURCES
+# ---------------
+#   leak  — one point, 100 kg/hr (2.78e-2 kg/s), sigma 25 m. Defined below.
+#   paddy — 300 x 300 m at 2.0e-10 kg m-2 s-1 (April pre-season flux, from
+#           examples/sacval_april_2020.yaml) = 1.8e-5 kg/s total, tiled as a
+#           6x6 lattice at 50 m spacing with sigma 40 m. Built by the driver,
+#           not listed here, so the geometry stays parameterised in one place.
+#
+# The two totals differ by ~1500x. The scalar is passive and the source term
+# linear, so the driver reports BOTH raw and emission-normalised fields; only
+# the normalised ones say anything about dispersion as opposed to source size.
+# ============================================================================
+
+transport:
+  model: microhh
+  mode: simulation
+  # Bounds the met read. The driver selects the 18:00Z record within it.
+  start: "2020-03-31T18:00:00"
+  end:   "2020-03-31T21:00:00"
+
+met:
+  era5:
+    meteo_dir: ../runs/sacramento_valley_2020/meteo_april_week
+    surface_roughness_m: 0.15
+    friction_velocity: log_law
+
+domain:
+  origin_lon: -121.75
+  origin_lat: 39.15
+  x_min: -4300.0
+  x_max:  4300.0
+  y_min: -4450.0
+  y_max:  4450.0
+  spacing_m: 100.0
+  receptor_height_m: 2.0
+
+# ─── sources: the point-leak variant (the driver swaps in the paddy tiles) ──
+sources:
+  - id: leak
+    x_m: 0.0
+    y_m: 0.0
+    alt_m: 5.0
+    emission_rate_kg_s: 2.7777778e-2    # 100 kg/hr
+
+# ─── receptors: a fetch transect along THIS hour's downwind bearing ─────────
+# Wind is from 160 deg, so downwind is toward 340 deg — not due north. The
+# transect follows that bearing; the two `cross_` receptors straddle it at
+# 500 m to sample plume width, and `upwind` is the background reference.
+# Coordinates are metres east/north of the origin, as the contract requires.
+receptors:
+  - {id: fetch_150,   x_m:   -51.3, y_m:  +141.0, alt_m: 3.0}
+  - {id: fetch_250,   x_m:   -85.5, y_m:  +234.9, alt_m: 3.0}
+  - {id: fetch_500,   x_m:  -171.0, y_m:  +469.8, alt_m: 3.0}
+  - {id: fetch_1000,  x_m:  -342.0, y_m:  +939.7, alt_m: 3.0}
+  - {id: fetch_1500,  x_m:  -513.0, y_m: +1409.5, alt_m: 3.0}
+  - {id: cross_left,  x_m:  -358.9, y_m:  +401.4, alt_m: 3.0}   # -200 m @ 500 m
+  - {id: cross_right, x_m:   +16.9, y_m:  +538.3, alt_m: 3.0}   # +200 m @ 500 m
+  - {id: upwind,      x_m:  +102.6, y_m:  -281.9, alt_m: 3.0}   # background
+
+output:
+  path: ../runs/sacramento_convective_compare/canonical.nc
+  compress: true
+  keep_native: true
+
+microhh:
+  executable: ../microhh/build/microhh
+  num_workers: 4
+
+  # 822 m BL fits comfortably under the sponge at ~1536 m.
+  grid: {itot: 192, jtot: 96, ktot: 64, xsize: 3840.0, ysize: 1920.0, zsize: 2048.0}
+
+  # 0.25*xsize — clears the paddy's 150 m half-width and the 300 m upwind
+  # receptor once the box rotates to the 340 deg downwind bearing.
+  source_x0: 960.0
+
+  # Applies to the LEAK variant. The driver overrides it to 40 m for the paddy,
+  # where sigma must match the 50 m tile spacing to sum to a uniform patch.
+  source_sigma_m: 25.0
+
+  # Pin the cross-section planes. They otherwise default to the FIRST source's
+  # height and y — which is 5 m / centreline for the leak but 2 m / a corner
+  # tile for the paddy, so the two runs would slice different planes and their
+  # cross-sections would not be comparable. xz_m is a box coordinate; 960 is
+  # source_y0, i.e. the plume centreline.
+  cross_xy_m: 5.0
+  cross_xz_m: 960.0
+
+  spinup_seconds: 1800    # discarded before averaging
+  runtime_seconds: 10800  # 3 h of sampling — ~18 convective eddy turnovers
+  sampletime: 60
+  met_reduce: mean        # identity: the driver passes a single record
+
+  extra_ini:
+    dump:
+      swdump: 1
+      dumplist: ch4
+      sampletime: 300

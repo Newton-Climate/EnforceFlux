@@ -7,6 +7,9 @@
 #
 # Usage:
 #   python apps/met_main.py --config apps/met_april_week.yaml
+#
+# Same schema as apps/met_main.yaml — see that file for every setting, its
+# units and defaults. Only the window, output_dir and skip behaviour differ.
 
 meteo:
   output_dir: ../runs/sacramento_valley_2020/meteo_april_week

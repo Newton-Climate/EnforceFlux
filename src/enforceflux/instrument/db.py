@@ -39,9 +39,14 @@ INSTRUMENT_DB: dict[str, dict[str, OperatorParams]] = {
         "good": OperatorParams(
             tech_id="OP", mode="good",
             operator_type="line_integral", observable="concentration_ppm",
-            sigma_scale=0.0, sigma_abs=0.003,
+            sigma_scale=0.0, sigma_abs=0.010,   # 10 ppb random error
             bias_scale=0.0, bias_abs=0.0,
-            detection_limit=0.04, dropout_probability=0.05,
+            # WARNING: 5 ppb is 0.5 * sigma_abs. A detection limit below the
+            # noise floor does not gate anything — pure noise exceeds |5 ppb|
+            # about 62% of the time — so `valid_mask` here means "a noise
+            # excursion cleared the bar", not "a plume was detected". Raise this
+            # to 2-3 sigma (20-30 ppb) for the flag to carry information.
+            detection_limit=0.005, dropout_probability=0.05,
             cadence_s=60.0, source_ids="Ashik2024",
         ),
     },

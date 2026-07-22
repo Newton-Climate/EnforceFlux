@@ -1,54 +1,109 @@
-# YAML config for apps/simulation_main.py
-# Uses the existing EnforceFlux FLEXPART simulation schema plus simulation.mode.
+# ============================================================================
+# FLEXPART transport simulation — apps/simulation_main.py
+# ============================================================================
+#   python apps/simulation_main.py --config apps/simulation_main.yaml
+#
+# The EnforceFlux FLEXPART simulation schema plus `simulation.mode`. For a
+# model-agnostic run (AERMOD / FLEXPART / MicroHH from one file) use
+# apps/transport_main.yaml instead.
+#
+# Relative paths resolve against THIS FILE's directory.
+# ============================================================================
 
+
+# ─── flexpart: binary, meteorology, scratch space ───────────────────────────
 flexpart:
-  executable: ../flexpart/src/FLEXPART
-  options_dir: ../flexpart/options
+  executable: ../flexpart/src/FLEXPART   # built by `make install-flexpart`
+  options_dir: ../flexpart/options       # OPTIONS template (COMMAND, SPECIES, ...)
+
+  # AVAILABLE indexes the met files and their timestamps; meteo_dir holds the
+  # EA* GRIBs themselves. Both are produced by apps/met_main.py. The window
+  # below MUST be covered by AVAILABLE or FLEXPART aborts.
   available_file: ../data/tropomi_files/AVAILABLE
   meteo_dir: ../data/tropomi_files
-  run_dir: ../runs/simulation_main
 
+  run_dir: ../runs/simulation_main       # scratch: generated inputs + raw output
+
+
+# ─── simulation: window, cadence, direction ─────────────────────────────────
 simulation:
-  start: "2020-04-01T00:00:00"
-  end: "2020-04-02T00:00:00"
-  output_step_seconds: 3600
-  sync_seconds: 900
-  mode: forward  # forward | backward
+  start: "2020-04-01T00:00:00"   # ISO-8601 UTC
+  end:   "2020-04-02T00:00:00"
 
+  output_step_seconds: 3600      # output averaging interval (s)
+  sync_seconds: 900              # internal synchronisation step (s); must
+                                 #   divide output_step_seconds
+
+  # forward  — release from `sources`, produce a concentration field.
+  # backward — release from receptors and integrate back in time, producing
+  #            source-receptor sensitivity (footprints). Cheaper than forward
+  #            when receptors are fewer than sources, and the natural way to
+  #            build an inversion Jacobian.
+  mode: forward
+
+  # nxshift: -9999               # [opt] -9999 = auto-detect (359 ECMWF, 0 GFS).
+                                 #   Set 0 for regional/test grids.
+
+
+# ─── domain: output grid ────────────────────────────────────────────────────
+# The concentration grid FLEXPART accumulates onto — independent of the met
+# resolution, but finer cells mean fewer particles each and so noisier output.
 domain:
   lon_min: -124.5
-  lat_min: 36.5
+  lat_min:  36.5
   lon_max: -118.0
-  lat_max: 42.0
-  dx: 0.1
-  dy: 0.1
+  lat_max:  42.0
+  dx: 0.1                        # deg (~8.5 km here)
+  dy: 0.1                        # deg (~11 km)
+
+  # Output level tops (m AGL). The first entry is the surface layer, so a thick
+  # first layer dilutes a shallow plume over its full depth.
   heights_m: [100.0, 500.0, 1000.0]
 
+
+# ─── species ────────────────────────────────────────────────────────────────
 species:
   name: CH4
-  number: 24
+  number: 24                     # SPECNUM_REL; must match a SPECIES_0XX file
+                                 #   in options_dir/SPECIES/
 
+
+# ─── sources ────────────────────────────────────────────────────────────────
+# Two source types are supported; a run may mix them freely.
+#
+#   type: point    — a single release location (well pad, stack, leak).
+#   type: diffuse  — an area flux, discretised into a lat/lon grid of releases.
+#                    Total mass = flux x cell area x duration.
 sources:
   - type: point
     id: sacramento_point_1
     lon: -121.5
     lat: 38.6
-    alt_m: 10.0
-    emission_rate_kg_s: 2.0e-4
-    n_particles: 10000
+    alt_m: 10.0                  # release height (m AGL)
+    emission_rate_kg_s: 2.0e-4   # kg/s (2.0e-4 = 0.72 kg/hr)
+    n_particles: 10000           # per source. Noise falls as 1/sqrt(N); raise
+                                 #   for fine grids or distant receptors.
 
   - type: diffuse
     id: valley_diffuse
-    lon_min: -122.2
+    lon_min: -122.2              # area bounds
     lon_max: -121.0
-    lat_min: 38.5
-    lat_max: 39.8
+    lat_min:  38.5
+    lat_max:  39.8
     alt_m: 2.0
-    emission_flux_kg_m2_s: 1.5e-9
-    cell_size_deg: 0.2
-    n_particles_per_cell: 500
+    emission_flux_kg_m2_s: 1.5e-9  # PER UNIT AREA (kg m-2 s-1), unlike the
+                                   #   point source's total rate
+    cell_size_deg: 0.2           # discretisation; smaller = more RELEASES
+                                 #   blocks and a proportionally longer run
+    n_particles_per_cell: 500    # total particles = cells x this
 
+
+# ─── output ─────────────────────────────────────────────────────────────────
 output:
   path: ../outputs/simulation_main.nc
-  compress: true
-  per_source: false
+  compress: true                 # zlib-compress the NetCDF
+  per_source: false              # IOUTPUTFOREACHRELEASE. false = one summed
+                                 #   grid; true = a separate grid per release,
+                                 #   which is what lets you attribute a signal
+                                 #   to an individual source (and multiplies
+                                 #   output size by the release count).

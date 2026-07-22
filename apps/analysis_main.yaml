@@ -1,33 +1,82 @@
-# YAML config for apps/analysis_main.py
+# ============================================================================
+# Analysis and diagnostics — apps/analysis_main.py
+# ============================================================================
+#   python apps/analysis_main.py --config apps/analysis_main.yaml
+#
+# Reads either a raw simulation field or an instrument observation file and
+# produces information-content diagnostics (averaging kernel, DFS, posterior
+# uncertainty) plus optional plots.
+#
+# Relative paths resolve against THIS FILE's directory.
+# ============================================================================
 
+
+# ─── input: what to analyse ─────────────────────────────────────────────────
 input:
-  # Set to either simulation or instrument output.
+  # Either a simulation field (apps/simulation_main.py, apps/transport_main.py)
+  # or an instrument file (apps/instrument_main.py). The two carry different
+  # variables, hence `kind` below.
   netcdf: ../outputs/instrument_main.nc
-  kind: auto  # auto | simulation | instrument
+
+  # auto        — detect from the file's variables (recommended).
+  # simulation  — force: treat as a raw concentration field.
+  # instrument  — force: expect observations, H·G and R.
+  # Only an instrument file supports the information-content diagnostics, since
+  # they need the observation operator and noise covariance.
+  kind: auto
+
+  # Candidate variable names tried, in order, when reading a simulation field.
+  # Extend this if your field uses a different name.
   simulation_variable_names: [ch4_mixing_ratio, ch4_concentration]
 
+
+# ─── analysis: prior assumptions ────────────────────────────────────────────
+# The prior covariance S_a. Information content is measured RELATIVE to the
+# prior, so these values set what "informative" means: an over-tight prior
+# makes any network look uninformative, a loose one flatters it.
 analysis:
-  # Used for instrument analysis when no prior_covariance_diag list is supplied.
+  # Scalar variance applied to every source, used when no explicit diagonal is
+  # given below.
   prior_variance: 1.0
+
+  # Per-source prior variances (length = n_sources). Takes precedence over
+  # prior_variance when present — use it when sources differ in how well they
+  # are known a priori.
   # prior_covariance_diag: [1.0, 1.0, 1.0]
 
+
+# ─── visualization ──────────────────────────────────────────────────────────
 visualization:
   enabled: true
   directory: ../outputs/analysis_plots
+
+  # Which slice to render for field plots.
   time_index: 0
   level_index: 0
   release_index: 0
+
+  # Wind rose from a met file — the distribution of wind directions over the
+  # window, which is the single best predictor of which sources a fixed network
+  # can actually see.
   wind_rose:
     enabled: false
-    # Optional: if omitted, uses input.netcdf above.
+
+    # Met file to read. If omitted, uses input.netcdf above — which only works
+    # when that file actually carries wind components.
     # netcdf: ../runs/sacramento_valley_2020/meteo_july/ERA5_20200701.nc
-    u_var: u10
-    v_var: v10
-    n_dir_bins: 16
-    calm_threshold: 0.2
+
+    u_var: u10             # eastward wind variable name
+    v_var: v10             # northward wind variable name
+    n_dir_bins: 16         # direction sectors (16 = 22.5 deg each)
+    calm_threshold: 0.2    # m/s below which a sample counts as calm and is
+                           #   excluded — direction is meaningless in calm air
     title: Wind Rose
     cmap: viridis
     output_name: wind_rose.png
 
+
+# ─── output ─────────────────────────────────────────────────────────────────
 output:
+  # Machine-readable diagnostics (DFS, posterior uncertainty, per-source
+  # information) for downstream comparison across network designs.
   summary_json: ../outputs/analysis_summary.json

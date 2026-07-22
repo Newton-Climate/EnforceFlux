@@ -1,0 +1,81 @@
+# Backward-mode FLEXPART config — April 2 2020 (single windy day).
+#
+# April 2, 2020 ERA5: consistent NNW flow all day (FROM 322–355°),
+# 3–6 m/s.  The plume travels SSE all day long.  Sensors are placed
+# ~9 km south of the source so that backward trajectories from sensors
+# travel north back to the source in ~30 min at these wind speeds.
+#
+# This gives a physically meaningful footprint: source cell should show
+# a strong footprint signal for all three sensors.
+#
+# Run via examples/single_source_instrument_demo.py
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_april_week/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_april_week/
+  run_dir:       ../runs/single_source_instrument/backward_run_april2/
+
+simulation:
+  start: "2020-04-02T00:00:00"
+  end:   "2020-04-03T00:00:00"
+  output_step_seconds: 10800
+  sync_seconds: 3600
+  nxshift: 0
+
+domain:
+  lon_min: -121.98
+  lat_min:  39.02
+  lon_max: -121.52
+  lat_max:  39.48
+  dx: 0.025
+  dy: 0.025
+  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24
+
+# Sensors placed ~9 km south of source to intercept the SSE-bound plume.
+#   OP_crossplume : 500 m E-W open-path beam (bearing 90°) crossing the
+#                   NNW-to-SSE plume axis at the source latitude − 0.075°
+#   point_SE      : point sensor SE of source — slightly off plume axis
+#   point_SW      : point sensor SW of source — flanks the plume axis
+#
+# 50 000 particles per sensor — confirmed safe limit on macOS FLEXPART 11.0.
+sources:
+  - type: point
+    id: OP_crossplume
+    lon: -121.75
+    lat:  39.07
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-02T00:00:00"
+    end:   "2020-04-03T00:00:00"
+
+  - type: point
+    id: point_SE
+    lon: -121.68
+    lat:  39.07
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-02T00:00:00"
+    end:   "2020-04-03T00:00:00"
+
+  - type: point
+    id: point_SW
+    lon: -121.82
+    lat:  39.07
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-02T00:00:00"
+    end:   "2020-04-03T00:00:00"
+
+output:
+  path: ../runs/single_source_instrument/backward_footprints_april2.nc
+  compress: true
+  per_source: true

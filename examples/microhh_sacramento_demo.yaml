@@ -20,6 +20,10 @@
 microhh:
   executable: ../microhh/build/microhh     # compiled by `make install-microhh`
   case_dir:   ../runs/microhh_sacramento_demo/   # .ini/.nc inputs + all output
+  num_workers: 1              # MPI ranks; 1 = serial (default build).
+                              #   >1 needs `make install-microhh MICROHH_MPI=1`
+                              #   plus mpirun on PATH. Split into (npx,npy) with
+                              #   ktot%npx==0 etc; invalid counts fail at load.
 
 simulation:
   name: sacramento_ch4_demo   # basename of every input/output file

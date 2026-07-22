@@ -8,8 +8,6 @@ Demonstrates non-NaN simulated observations for both:
 Run from repo root:
     python examples/instrument_operator_demo.py
 """
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 
@@ -17,7 +15,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from enforceflux.models.instrument import Instrument, InstrumentOperator
+from enforceflux.instrument import Instrument, InstrumentOperator
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -119,7 +117,7 @@ def main() -> None:
     print()
     print("  Instrument   mode          DL (kg/hr)  σ_scale   p_drop")
     print("  " + "-" * 53)
-    from enforceflux.models.instrument import INSTRUMENT_DB
+    from enforceflux.instrument import INSTRUMENT_DB
     for tech in ["LP_ESN", "IM_LS", "BP_GML"]:
         for mode in ["good", "challenging", "bad"]:
             p = INSTRUMENT_DB[tech][mode]

@@ -21,6 +21,14 @@ MICROHH_BIN  = $(MICROHH_DIR)/build/microhh
 # CMake system-config selector (config/<SYST>.cmake). Override for other
 # platforms, e.g. SYST=macbook_brew, SYST=ubuntu_20lts, SYST=generic.
 MICROHH_SYST ?= macbook_apple_silicon
+# MPI-parallel by default: the configs ship with num_workers: 4, which a
+# serial binary cannot honour. Needs an MPI toolchain (brew install open-mpi).
+# Set MICROHH_MPI=0 for a serial binary — then every case must use
+# num_workers: 1. MicroHH cannot combine MPI with CUDA.
+MICROHH_MPI  ?= 1
+ifeq ($(MICROHH_MPI),1)
+MICROHH_CMAKE_FLAGS = -DUSEMPI=TRUE
+endif
 
 # Create a local virtual environment (.venv) and upgrade build tooling
 env:
@@ -52,11 +60,12 @@ install-flexpart:
 	@echo "FLEXPART binary: $$(ls -lh $(FLEXPART_BIN))"
 
 # Clone (with submodules) and compile MicroHH — plume-scale LES backend.
-# Build deps (Homebrew): cmake fftw hdf5 netcdf boost gnu-sed. Install with:
-#   brew install cmake fftw hdf5 netcdf boost gnu-sed
-# Serial, double-precision build using the config/$(MICROHH_SYST).cmake system
-# file. For a single-GPU build, pass a CUDA-enabled SYST and add -DUSECUDA=TRUE
-# below (note: MicroHH cannot combine -DUSEMPI with -DUSECUDA).
+# Build deps (Homebrew): cmake fftw hdf5 netcdf boost gnu-sed open-mpi. Install:
+#   brew install cmake fftw hdf5 netcdf boost gnu-sed open-mpi
+# MPI-parallel (MICROHH_MPI=1), double-precision build using the
+# config/$(MICROHH_SYST).cmake system file. For a single-GPU build, pass a
+# CUDA-enabled SYST, MICROHH_MPI=0 and add -DUSECUDA=TRUE below (note: MicroHH
+# cannot combine -DUSEMPI with -DUSECUDA).
 install-microhh:
 	@if [ ! -d "$(MICROHH_DIR)/.git" ]; then \
 		echo "Cloning MicroHH from $(MICROHH_REPO) ..."; \
@@ -65,9 +74,16 @@ install-microhh:
 		echo "MicroHH repo already present at $(MICROHH_DIR)/"; \
 		git -C "$(MICROHH_DIR)" submodule update --init --recursive; \
 	fi
-	@echo "Configuring MicroHH (SYST=$(MICROHH_SYST), RELEASE) ..."
+	@# USEMPI selects the compilers (mpicxx vs clang++), which CMake refuses to
+	@# change in place — drop a cache configured the other way.
+	@if [ -f "$(MICROHH_DIR)/build/CMakeCache.txt" ] && \
+	   [ "$$(grep -c '^CMAKE_CXX_COMPILER:.*mpi' "$(MICROHH_DIR)/build/CMakeCache.txt")" != "$(MICROHH_MPI)" ]; then \
+		echo "USEMPI changed — wiping $(MICROHH_DIR)/build ..."; \
+		rm -rf "$(MICROHH_DIR)/build"; \
+	fi
+	@echo "Configuring MicroHH (SYST=$(MICROHH_SYST), MPI=$(MICROHH_MPI), RELEASE) ..."
 	cmake -S "$(MICROHH_DIR)" -B "$(MICROHH_DIR)/build" \
-		-DSYST=$(MICROHH_SYST) -DCMAKE_BUILD_TYPE=RELEASE
+		-DSYST=$(MICROHH_SYST) -DCMAKE_BUILD_TYPE=RELEASE $(MICROHH_CMAKE_FLAGS)
 	@echo "Compiling MicroHH ..."
 	cmake --build "$(MICROHH_DIR)/build" --target microhh -j4
 	@echo "MicroHH binary: $$(ls -lh $(MICROHH_BIN))"

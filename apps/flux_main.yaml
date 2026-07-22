@@ -1,8 +1,29 @@
-# YAML config for apps/flux_main.py
-# Builds transport matrix G from simulation NetCDF and runs OE flux inversion.
+# ============================================================================
+# Flux inversion — apps/flux_main.py
+# ============================================================================
+#   python apps/flux_main.py --config apps/flux_main.yaml
+#
+# Builds the transport matrix G from a simulation NetCDF and solves for the
+# posterior fluxes by optimal estimation:
+#
+#     x_hat = x_a + S_a G^T (G S_a G^T + S_e)^-1 (y - G x_a)
+#
+# Every section below is one term in that equation: `receptors`/`input` build
+# G, `observations` supply y and S_e, `inversion` supplies x_a and S_a.
+#
+# Relative paths resolve against THIS FILE's directory.
+# ============================================================================
 
+
+# ─── input: where G comes from ──────────────────────────────────────────────
 input:
-  # simulation_receptors | instrument_netcdf
+  # simulation_receptors — sample the simulation field at the `receptors`
+  #                        listed below; observations come from this file.
+  # instrument_netcdf    — take G, y and the noise variance from an
+  #                        apps/instrument_main.py output, i.e. include the
+  #                        instrument operator and its real noise model.
+  #                        Preferred for a realistic OSSE; the `receptors`
+  #                        section is then ignored.
   mode: simulation_receptors
 
   simulation_netcdf: ../outputs/simulation_main.nc
@@ -10,21 +31,25 @@ input:
   # instrument_netcdf: ../outputs/instrument_main.nc
 
   variable_name: ch4_mixing_ratio
-  time_index: 0
-  level_index: 0
-  # When mode=instrument_netcdf and instrument timesteps exceed simulation,
-  # reuse final simulation timestep for remaining instrument times.
+  time_index: 0     # which timestep of the field builds G
+  level_index: 0    # vertical level; 0 = surface
+
+  # When mode=instrument_netcdf and the instrument series is longer than the
+  # simulation, reuse the final simulation timestep for the remaining times.
+  # Convenient, but it holds transport fixed while observations keep varying —
+  # so the extra observations carry no new transport information.
   reuse_last_sim_time: true
 
-# Receptors define the rows of G (observation locations).
-# For observations.mode=provided, include observed and optionally sigma.
-# This section is used only in input.mode=simulation_receptors.
+
+# ─── receptors: the rows of G ───────────────────────────────────────────────
+# Observation locations. Used ONLY when input.mode=simulation_receptors.
+# For observations.mode=provided, give `observed` and optionally `sigma`.
 receptors:
   - id: rec_west
     lon: -122.2
     lat: 38.9
-    observed: 1.2
-    sigma: 0.2
+    observed: 1.2      # measured value entering y
+    sigma: 0.2         # 1-sigma uncertainty; overrides default_sigma below
 
   - id: rec_central
     lon: -121.7
@@ -38,39 +63,66 @@ receptors:
     observed: 1.0
     sigma: 0.2
 
+
+# ─── observations: y and the noise covariance S_e ───────────────────────────
 observations:
-  # provided | synthetic_from_truth
-  # In input.mode=instrument_netcdf, y_obs/noise_variance come from
-  # instrument_netcdf, and this section is only used as a fallback default_sigma
-  # when noise_variance is missing.
+  # provided             — use the `observed`/`sigma` values above (real or
+  #                        externally generated data).
+  # synthetic_from_truth — generate y = G @ truth_flux, optionally with noise.
+  #                        This is the OSSE path: you know the answer, so you
+  #                        can measure how well the network recovers it.
+  #
+  # When input.mode=instrument_netcdf, y and the noise variance come from that
+  # file and this section only supplies default_sigma as a fallback.
   mode: provided
+
+  # Fallback 1-sigma for any receptor without its own `sigma`.
   default_sigma: 0.2
 
-  # Used only when mode=synthetic_from_truth.
+  # Used only when mode=synthetic_from_truth. Length must equal n_sources.
+  # Set add_noise: false to test the inversion's algebra in isolation; leave it
+  # true for an honest recovery test — noiseless data flatters the result.
   # truth_flux_kg_s: [0.0002, 0.0001, 0.0003]
   # add_noise: true
   # random_seed: 42
 
+
+# ─── inversion: the prior (x_a, S_a) and the solver ─────────────────────────
 inversion:
-  # linear uses oe_from_linear; nonlinear uses optimize_oe with F(x)=G@x.
+  # linear    — closed-form OE (oe_from_linear). Correct when observations are
+  #             linear in flux, which they are for a passive tracer.
+  # nonlinear — iterative optimize_oe with F(x)=G@x. Only needed for a
+  #             genuinely nonlinear forward model; slower, same answer here.
   method: linear
 
-  # Prior flux can be scalar or vector length n_sources.
+  # Prior flux x_a: scalar (applied to all) or a vector of length n_sources.
   prior_flux_kg_s: 0.0
 
-  # Use either prior_covariance_diag (vector) or prior_variance (scalar) or
-  # fallback prior_sigma_fraction * |prior_flux|.
+  # Prior covariance S_a — the single most consequential choice here, since it
+  # sets how far the solution may move from the prior. Precedence:
+  #   1. prior_covariance_diag (vector)  — per-source variances
+  #   2. prior_variance (scalar)         — same variance for every source
+  #   3. prior_sigma_fraction * |x_a|    — fractional; NOTE this degenerates to
+  #                                        zero variance when prior_flux is 0,
+  #                                        which would pin the solution to the
+  #                                        prior. Hence the explicit
+  #                                        prior_variance below.
   prior_variance: 1.0e-8
   prior_sigma_fraction: 0.5
+  # prior_covariance_diag: [1.0e-8, 1.0e-8, 1.0e-8]
 
-  # Nonlinear solver settings (only used if method=nonlinear)
-  n_iter: 20
-  lam0: 1.0e-3
-  lam_factor: 10.0
-  eps: 1.0e-4
-  fd_step: 1.0e-5
+  # Nonlinear solver settings — used only when method=nonlinear.
+  n_iter: 20          # max Levenberg-Marquardt iterations
+  lam0: 1.0e-3        # initial LM damping
+  lam_factor: 10.0    # damping increase/decrease factor per step
+  eps: 1.0e-4         # convergence tolerance
+  fd_step: 1.0e-5     # finite-difference step for the Jacobian
 
+
+# ─── output ─────────────────────────────────────────────────────────────────
 output:
-  summary_json: ../outputs/flux_inversion_summary.json
-  matrices_npz: ../outputs/flux_inversion_matrices.npz
-  posterior_csv: ../outputs/flux_posterior.csv
+  summary_json: ../outputs/flux_inversion_summary.json   # posterior + diagnostics
+  matrices_npz: ../outputs/flux_inversion_matrices.npz   # G, S_a, S_e, gain,
+                                                         #   averaging kernel
+  posterior_csv: ../outputs/flux_posterior.csv           # per-source estimate
+                                                         #   and uncertainty

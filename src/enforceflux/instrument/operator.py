@@ -22,6 +22,19 @@ class ObservationResult:
     R: np.ndarray           # (m, m) diagonal noise covariance (inf for invalid)
 
 
+@dataclass(frozen=True)
+class TimeSeriesObservationResult:
+    """Output of ``InstrumentOperator.simulate_time_series``."""
+
+    instruments: tuple[Instrument, ...]
+    times_s: np.ndarray     # (t,) simulation timestamps in seconds
+    H_g: np.ndarray         # (t, m, n) instrument-modified forward operator
+    y_clean: np.ndarray     # (t, m) clean, cadence-aggregated observations
+    y_obs: np.ndarray       # (t, m) noisy observations; np.nan where invalid
+    valid_mask: np.ndarray  # (t, m) bool: True where observation is usable
+    R: np.ndarray           # (t, m, m) diagonal noise covariance (inf for invalid)
+
+
 # ─── Beam-path geometry helper ────────────────────────────────────────────────
 
 def _line_segment_weights(
@@ -94,7 +107,8 @@ class InstrumentOperator:
             If None, one-to-one mapping (instrument i → row i).
         receptor_x, receptor_y : (m_receptors,) arrays, optional
             Domain coordinates of each receptor. Required for
-            ``line_integral`` and ``ec_footprint`` with multiple receptors.
+            ``line_integral`` and synthetic ``ec_footprint`` fallback with
+            multiple receptors.
         receptor_heights_m : (m_receptors,) array, optional
             Height of each receptor. Required for column operators.
 
@@ -128,7 +142,7 @@ class InstrumentOperator:
             elif op == "line_integral" and receptor_x is not None:
                 H_g[i] = self._line_integral_row(g_rows, rows, inst, receptor_x, receptor_y)
             elif op == "ec_footprint" and receptor_x is not None:
-                H_g[i] = self._ec_footprint_row(g_rows, rows, inst, receptor_x, receptor_y)
+                H_g[i] = self._synthetic_ec_footprint_row(g_rows, rows, inst, receptor_x, receptor_y)
             elif op == "column_satellite" and inst.averaging_kernel is not None:
                 H_g[i] = self._column_kernel_row(g_rows, inst.averaging_kernel)
             elif op in ("column_aircraft", "column_satellite") and receptor_heights_m is not None:
@@ -154,10 +168,11 @@ class InstrumentOperator:
         w_sum = w.sum()
         return g_rows.mean(axis=0) if w_sum < 1e-30 else (w[:, None] * g_rows).sum(axis=0) / w_sum
 
-    def _ec_footprint_row(
+    def _synthetic_ec_footprint_row(
         self, g_rows: np.ndarray, row_indices: list[int],
         inst: Instrument, rx: np.ndarray, ry: np.ndarray,
     ) -> np.ndarray:
+        """Synthetic Gaussian fallback for toy EC demos, not a physical EC model."""
         wind_rad = math.radians(inst.footprint_wind_dir_deg)
         cx = inst.x + inst.footprint_sigma_m * math.sin(wind_rad)
         cy = inst.y + inst.footprint_sigma_m * math.cos(wind_rad)
@@ -180,6 +195,51 @@ class InstrumentOperator:
         dz = np.abs(np.gradient(h)) if len(h) > 1 else np.ones(1)
         dz_sum = dz.sum()
         return g_rows.mean(axis=0) if dz_sum < 1e-30 else (dz[:, None] * g_rows).sum(axis=0) / dz_sum
+
+    # ------------------------------------------------------------------
+    # Gridded-field sampling
+    # ------------------------------------------------------------------
+
+    def sample_fields(
+        self,
+        fields: np.ndarray,
+        x: np.ndarray,
+        y: np.ndarray,
+        *,
+        centred: bool = False,
+        n_samples: int | None = None,
+    ) -> np.ndarray:
+        """Sample a ``(nt, ny, nx)`` concentration field for every instrument.
+
+        Instruments whose ``operator_type`` is ``line_integral`` get the true
+        arc-length average along their beam; everything else is sampled at its
+        own location. Returns ``(nt, m_instruments)``.
+
+        This is the forward path a gridded model needs, and it is what makes
+        ``path_length_m`` mean something: sampling one nearest grid cell for an
+        open-path analyser reports a point measurement, which has a different
+        variance, skewness and detection rate from the path average even though
+        — path-averaging being linear — it has almost the same long-run mean.
+
+        ``x`` and ``y`` are the field's axes in metres, and each instrument's
+        ``x``/``y`` must be in those same coordinates.
+        """
+        from enforceflux.instrument.open_path import path_average_series
+
+        fields = np.asarray(fields, dtype=float)
+        if fields.ndim == 2:
+            fields = fields[None, ...]
+        if fields.ndim != 3:
+            raise ValueError(f"fields must be (nt, ny, nx), got {fields.shape}")
+
+        out = np.empty((fields.shape[0], len(self.instruments)), dtype=float)
+        for i, inst in enumerate(self.instruments):
+            length = inst.path_length_m if inst.operator_type == "line_integral" else 0.0
+            out[:, i] = path_average_series(
+                fields, x, y, inst.x, inst.y, length, inst.path_bearing_deg,
+                centred=centred, n_samples=n_samples,
+            )
+        return out
 
     # ------------------------------------------------------------------
     # Noise model
@@ -237,6 +297,12 @@ class InstrumentOperator:
             p = inst.params
             yc = float(y_clean[i])
 
+            if not np.isfinite(yc):
+                y_obs[i] = np.nan
+                valid[i] = False
+                noise_var[i] = np.inf
+                continue
+
             if self.rng.random() < p.dropout_probability:
                 y_obs[i] = np.nan
                 valid[i] = False
@@ -256,4 +322,141 @@ class InstrumentOperator:
             instruments=tuple(self.instruments),
             H_g=H_g, y_clean=y_clean, y_obs=y_obs,
             valid_mask=valid, R=np.diag(noise_var),
+        )
+
+    def simulate_time_series(
+        self,
+        g_series: np.ndarray,
+        x_true_series: np.ndarray,
+        times_s: np.ndarray,
+        receptor_map: list[list[int]] | None = None,
+        receptor_x: np.ndarray | None = None,
+        receptor_y: np.ndarray | None = None,
+        receptor_heights_m: np.ndarray | None = None,
+    ) -> TimeSeriesObservationResult:
+        """
+        Generate cadence-aware synthetic observations across time.
+
+        Parameters
+        ----------
+        g_series : (t, m_receptors, n_sources) or (m_receptors, n_sources) array
+            Forward operator by timestep. A 2-D array is broadcast across time.
+        x_true_series : (t, n_sources) or (n_sources,) array
+            True source state by timestep. A 1-D array is broadcast across time.
+        times_s : (t,) array
+            Monotonic simulation timestamps in seconds.
+
+        Returns
+        -------
+        TimeSeriesObservationResult
+            Per-time clean and noisy observations after cadence, bias, noise,
+            dropout, and detection-limit handling.
+        """
+        times = np.asarray(times_s, dtype=float)
+        if times.ndim != 1 or len(times) == 0:
+            raise ValueError("times_s must be a non-empty 1-D array.")
+        if np.any(np.diff(times) < 0.0):
+            raise ValueError("times_s must be monotonically non-decreasing.")
+
+        g_arr = np.asarray(g_series, dtype=float)
+        if g_arr.ndim == 2:
+            g_arr = np.broadcast_to(g_arr[None, :, :], (len(times),) + g_arr.shape)
+        elif g_arr.ndim != 3:
+            raise ValueError("g_series must be a 2-D or 3-D array.")
+        if g_arr.shape[0] != len(times):
+            raise ValueError("g_series and times_s must have the same number of timesteps.")
+
+        x_arr = np.asarray(x_true_series, dtype=float)
+        if x_arr.ndim == 1:
+            x_arr = np.broadcast_to(x_arr[None, :], (len(times), len(x_arr)))
+        elif x_arr.ndim != 2:
+            raise ValueError("x_true_series must be a 1-D or 2-D array.")
+        if x_arr.shape[0] != len(times):
+            raise ValueError("x_true_series and times_s must have the same number of timesteps.")
+        if g_arr.shape[2] != x_arr.shape[1]:
+            raise ValueError("g_series source dimension must match x_true_series.")
+
+        t_count = len(times)
+        m_inst = len(self.instruments)
+        n_src = g_arr.shape[2]
+
+        H_g = np.empty((t_count, m_inst, n_src), dtype=float)
+        y_native = np.full((t_count, m_inst), np.nan, dtype=float)
+        y_clean = np.full((t_count, m_inst), np.nan, dtype=float)
+        y_obs = np.full((t_count, m_inst), np.nan, dtype=float)
+        valid = np.zeros((t_count, m_inst), dtype=bool)
+        noise_var = np.full((t_count, m_inst), np.inf, dtype=float)
+
+        for t_idx in range(t_count):
+            H_g[t_idx] = self.apply_spatial_operator(
+                g_arr[t_idx],
+                receptor_map=receptor_map,
+                receptor_x=receptor_x,
+                receptor_y=receptor_y,
+                receptor_heights_m=receptor_heights_m,
+            )
+            finite_rows = np.all(np.isfinite(H_g[t_idx]), axis=1)
+            if np.any(finite_rows):
+                y_native[t_idx, finite_rows] = H_g[t_idx, finite_rows] @ x_arr[t_idx]
+
+        t0 = times[0]
+        for i, inst in enumerate(self.instruments):
+            p = inst.params
+            cadence = float(p.cadence_s)
+            if cadence <= 0.0:
+                raise ValueError(f"Instrument {inst.id} has non-positive cadence_s={cadence}.")
+
+            for t_idx, t_now in enumerate(times):
+                elapsed = t_now - t0
+                if elapsed < 0.0:
+                    continue
+                sample_index = round(elapsed / cadence)
+                if not np.isclose(elapsed, sample_index * cadence, atol=1e-9, rtol=0.0):
+                    continue
+
+                window_start = t_now - cadence
+                window_mask = (times >= window_start) & (times <= t_now)
+                if not np.any(window_mask):
+                    continue
+
+                window_values = y_native[window_mask, i]
+                finite_window = np.isfinite(window_values)
+                if not np.any(finite_window):
+                    continue
+
+                # The Jacobian row used downstream is H_g at the sample step;
+                # a non-finite row cannot back a usable observation.
+                if not np.all(np.isfinite(H_g[t_idx, i])):
+                    continue
+
+                yc = float(np.mean(window_values[finite_window]))
+                y_clean[t_idx, i] = yc
+
+                sigma_i = math.sqrt((p.sigma_scale * abs(yc)) ** 2 + p.sigma_abs**2)
+                noise_var[t_idx, i] = sigma_i**2
+
+                y_sample = yc * (1.0 + p.bias_scale) + p.bias_abs + self.rng.normal(0.0, sigma_i)
+                if self.rng.random() < p.dropout_probability:
+                    noise_var[t_idx, i] = np.inf
+                    continue
+
+                if p.detection_limit > 0.0 and abs(y_sample) < p.detection_limit:
+                    noise_var[t_idx, i] = np.inf
+                    continue
+
+                y_obs[t_idx, i] = y_sample
+                valid[t_idx, i] = True
+
+        R = np.zeros((t_count, m_inst, m_inst), dtype=float)
+        for t_idx in range(t_count):
+            R[t_idx] = np.diag(noise_var[t_idx])
+
+        return TimeSeriesObservationResult(
+            instruments=tuple(self.instruments),
+            times_s=times.copy(),
+            H_g=H_g,
+            y_clean=y_clean,
+            y_obs=y_obs,
+            valid_mask=valid,
+            R=R,
         )

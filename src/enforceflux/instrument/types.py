@@ -10,7 +10,7 @@ ObservableType = Literal[
 
 OperatorType = Literal[
     "line_integral",          # OP: path-averaged concentration
-    "ec_footprint",           # EC: turbulent flux footprint convolution
+    "ec_footprint",           # Synthetic EC footprint fallback for toy demos
     "point_flux",             # CH: chamber accumulation at a point
     "column_aircraft",        # AIR: vertical column integral
     "column_satellite",       # MSAT: averaging-kernel-weighted column

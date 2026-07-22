@@ -1,0 +1,129 @@
+# ============================================================================
+# Rice paddy as a REAL surface flux, on a surface-resolving grid
+# ============================================================================
+#   python examples/microhh_point_vs_diffuse.py \
+#       --config examples/sacramento_paddy_surface_flux.yaml --variants paddy
+#
+# WHY THIS RUN EXISTS
+# -------------------
+# The earlier paddy run got ~3 ppb of CH4 enhancement, which is far too low for
+# a flooded paddy at peak season. Two modelling choices caused it, and this
+# config fixes both.
+#
+# 1. THE SOURCE WAS NOT AT THE SURFACE.
+#    Tiling the field with volumetric Gaussian blobs (source_sigma_m: 40) put
+#    75% of the emission into the first model level and 23% into the second —
+#    injecting it through a ~48 m deep layer. A paddy emits at z = 0. Spreading
+#    the release over tens of metres removes the near-surface gradient that a
+#    low-mounted instrument actually measures.
+#      -> `surface_flux_sources` below realises the paddy as MicroHH's 2-D
+#         bottom boundary condition (sbot_2d_list) instead: a genuine surface
+#         flux, uniform over the field, zero elsewhere.
+#
+# 2. THE GRID COULD NOT SEE THE SURFACE LAYER.
+#    A uniform 64-level grid over 2048 m puts the first scalar level at 16 m.
+#    Open-path beams sit at 0.5-3 m, and the surface-layer profile is
+#    logarithmic, so that height difference is worth tens of ppb: Monin-Obukhov
+#    scaling on the old run's own u* and L implied +14 ppb at 2 m and +32 ppb at
+#    0.5 m relative to 16 m.
+#      -> the stretched grid below puts full levels at 0.50, 1.52, 2.58, 3.68 m,
+#         so the profile is RESOLVED rather than extrapolated.
+#
+# COST: 128 levels and a 1 m first cell tighten the diffusion-number limit on
+# the timestep, so this is substantially slower than the 64-level uniform run.
+# ============================================================================
+
+transport:
+  model: microhh
+  mode: simulation
+  start: "2020-03-31T18:00:00"
+  end:   "2020-03-31T21:00:00"
+
+met:
+  era5:
+    meteo_dir: ../runs/sacramento_valley_2020/meteo_april_week
+    surface_roughness_m: 0.15
+    friction_velocity: log_law
+
+domain:
+  origin_lon: -121.75
+  origin_lat: 39.15
+  x_min: -4300.0
+  x_max:  4300.0
+  y_min: -4450.0
+  y_max:  4450.0
+  spacing_m: 100.0
+  receptor_height_m: 2.0
+
+# ─── sources: one entry, the whole field ────────────────────────────────────
+# The total emission is declared HERE, once, in the shared block every model
+# reads. The microhh block below only says how to realise it (as a surface
+# flux over a 300 m square), never restating the rate.
+#   300 x 300 m at the July peak flux 1.5e-9 kg m-2 s-1
+#   = 1.35e-4 kg/s = 11.66 kg/day
+sources:
+  - id: paddy
+    x_m: 0.0
+    y_m: 0.0
+    alt_m: 0.0                      # a surface flux; the height is the ground
+    emission_rate_kg_s: 1.35e-4
+
+# ─── receptors ──────────────────────────────────────────────────────────────
+# Column output carries the FULL vertical profile at each of these, so beam
+# heights are chosen at analysis time — 0.5, 1 and 2 m are all resolved levels.
+receptors:
+  - {id: centre,     x_m:    0.0, y_m:    0.0, alt_m: 2.0}
+  - {id: edge_down,  x_m:  -51.3, y_m:  141.0, alt_m: 2.0}   # downwind bund
+  - {id: fetch_350,  x_m: -119.7, y_m:  328.9, alt_m: 2.0}   # 200 m past it
+  - {id: upwind,     x_m:  +51.3, y_m: -141.0, alt_m: 2.0}   # background
+
+output:
+  path: ../runs/sacramento_paddy_surface_flux/canonical.nc
+  compress: true
+  keep_native: true
+
+microhh:
+  executable: ../microhh/build/microhh
+  num_workers: 4
+
+  # Realise `paddy` as a 2-D surface-flux BC over a 300 m square rather than as
+  # volumetric blobs. The flux is emission_rate_kg_s / side^2, converted to
+  # MicroHH's kinematic units with the case's own reference density.
+  surface_flux_sources:
+    paddy: {side_m: 300.0}
+
+  # ktot 128 with 1 m at the ground, growing 1.040 per level to a 32 m cap.
+  # Full levels: 0.50, 1.52, 2.58, 3.68 ... 2032 m; 90 of them below the 822 m
+  # boundary-layer top (the old uniform grid had 25).
+  grid:
+    itot: 192
+    jtot: 96
+    ktot: 128            # divisible by npx=2 for the 4-worker decomposition
+    xsize: 3840.0
+    ysize: 1920.0
+    zsize: 2048.0
+    dz_surface_m: 1.0    # first cell thickness -> first level at 0.5 m
+    dz_max_m: 32.0       # stop stretching here; uniform above
+
+  source_x0: 960.0
+
+  # Sample the xy cross-section at the FIRST level, so the open-path analysis
+  # sees the beam height rather than something tens of metres up.
+  cross_xy_m: 0.5
+  cross_xz_m: 960.0
+
+  # The 1 m surface cell tightens the diffusion-number limit on the adaptive
+  # timestep: this grid integrates at roughly 1x real time on 4 ranks, against
+  # ~42x for the 64-level uniform grid. 1 h of sampling (~7 convective eddy
+  # turnovers) is the compromise — enough for a solid mean profile, but expect
+  # ~15% uncertainty on the mean and treat higher moments as indicative only.
+  spinup_seconds: 1800
+  runtime_seconds: 3600
+  sampletime: 60
+  met_reduce: mean
+
+  extra_ini:
+    dump:
+      swdump: 1
+      dumplist: ch4
+      sampletime: 300

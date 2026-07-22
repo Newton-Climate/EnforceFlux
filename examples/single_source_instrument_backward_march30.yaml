@@ -1,0 +1,80 @@
+# Backward-mode FLEXPART config — March 31 2020.
+#
+# ERA5 near-surface wind (model level 137) on March 31 is consistently
+# FROM SW/WSW, blowing toward NE/ENE (bearing ~68°) at 1.7–3.5 m/s
+# all day. March 30 GRIB is the first available timestep so FLEXPART
+# cannot interpolate backward past it; March 31 is the earliest safe day.
+#
+# Backward FLEXPART from ENE sensors travels WSW → hits source in ~21 min.
+# Source at (-121.750, 39.150); sensors at bearing 68° ±25°, 3 km away.
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_april_week/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_april_week/
+  run_dir:       ../runs/single_source_instrument/backward_run_march31/
+
+simulation:
+  start: "2020-03-31T00:00:00"
+  end:   "2020-04-01T00:00:00"
+  output_step_seconds: 10800
+  sync_seconds: 3600
+  nxshift: 0
+
+# Output grid matches ERA5 coverage; fine 0.01° (~1 km) resolution.
+domain:
+  lon_min: -122.50
+  lat_min:  38.75
+  lon_max: -121.00
+  lat_max:  39.75
+  dx: 0.01
+  dy: 0.01
+  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24
+
+# Sensors placed 3 km downwind (ENE) of source, forming a triangle.
+# March 31 mean wind: u=+2.38 m/s east, v=+0.94 m/s north → bearing 68°.
+# Backward trajectories go WSW (bearing 248°) and reach source in ~21 min.
+#
+#   sensor_ENE_axis : bearing 68°, 3 km → (-121.718, 39.160)  on-axis
+#   sensor_NE       : bearing 43°, 3 km → (-121.726, 39.170)  left flank
+#   sensor_E        : bearing 93°, 3 km → (-121.715, 39.148)  right flank
+sources:
+  - type: point
+    id: sensor_ENE_axis
+    lon: -121.718
+    lat:  39.160
+    alt_m: 10.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-03-31T00:00:00"
+    end:   "2020-04-01T00:00:00"
+
+  - type: point
+    id: sensor_NE
+    lon: -121.726
+    lat:  39.170
+    alt_m: 10.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-03-31T00:00:00"
+    end:   "2020-04-01T00:00:00"
+
+  - type: point
+    id: sensor_E
+    lon: -121.715
+    lat:  39.148
+    alt_m: 10.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-03-31T00:00:00"
+    end:   "2020-04-01T00:00:00"
+
+output:
+  path: ../runs/single_source_instrument/backward_footprints_march31_10m.nc
+  compress: true
+  per_source: true

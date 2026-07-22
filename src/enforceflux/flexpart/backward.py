@@ -56,13 +56,14 @@ import dataclasses
 import os
 import shutil
 import subprocess
+import warnings
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from enforceflux.models.config import DomainConfig
-from enforceflux.flexpart.runner import FlexpartRunResult
+from enforceflux.backend import UnitRunResult
 from enforceflux.flexpart.simulation import FlexpartSimulation, SimulationConfig
 from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
@@ -117,7 +118,7 @@ class FlexpartBackwardRunner:
         self,
         instruments: list[Instrument],
         sources: list[Source],
-    ) -> FlexpartRunResult:
+    ) -> UnitRunResult:
         """
         Run one backward FLEXPART simulation per receptor and assemble G.
 
@@ -131,7 +132,7 @@ class FlexpartBackwardRunner:
 
         Returns
         -------
-        FlexpartRunResult
+        UnitRunResult
             ``result.g[i, j]`` = footprint at source ``j`` for receptor ``i``
             in units ``[s m³ kg⁻¹]``.
             Multiply by ``FOOTPRINT_TO_JACOBIAN = 1e12`` to convert to
@@ -200,7 +201,7 @@ class FlexpartBackwardRunner:
                 {"receptor": inst.id, "run_dir": str(run_dir), "output_dir": str(output_dir)}
             )
 
-        return FlexpartRunResult(g=G, meta=meta)
+        return UnitRunResult(g=G, meta=meta)
 
     # ── Unit conversion ───────────────────────────────────────────────────────
 
@@ -223,7 +224,7 @@ class FlexpartBackwardRunner:
         Parameters
         ----------
         g_raw : (m, n) ndarray
-            Raw ``FlexpartRunResult.g`` from :meth:`run`.  Units: ``[s]``.
+            Raw ``UnitRunResult.g`` from :meth:`run`.  Units: ``[s]``.
         source_areas_m2 : (n,) ndarray
             Horizontal area of each source grid cell in m².
             For a 1° × 1° cell at latitude φ:
@@ -354,12 +355,26 @@ class FlexpartBackwardRunner:
         if not exe.exists():
             raise FileNotFoundError(f"FLEXPART executable not found: {exe}")
         # Pass pathnames as its filename only; FLEXPART opens it relative to cwd=run_dir.
-        subprocess.run(
+        env = os.environ.copy()
+        # Single-threaded OpenMP prevents a race condition in FLEXPART's NetCDF
+        # output writer that causes SIGTRAP/hangs on macOS (see simulation.py).
+        env["OMP_NUM_THREADS"] = "1"
+        proc = subprocess.run(
             [str(exe), pathnames.name],
             cwd=run_dir,
-            check=True,
-            env=os.environ.copy(),
+            env=env,
         )
+        if proc.returncode != 0:
+            # FLEXPART 11 can segfault during teardown after the run has
+            # completed and written its output; only fail if output is missing.
+            if not self._has_output(run_dir / "output"):
+                raise subprocess.CalledProcessError(proc.returncode, proc.args)
+            warnings.warn(
+                f"FLEXPART exited with code {proc.returncode} after writing "
+                f"output in {run_dir}; continuing with the written footprint.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     # ── Footprint reader ──────────────────────────────────────────────────────
 

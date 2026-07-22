@@ -3,6 +3,7 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from enforceflux.backend import resolve_path
 from enforceflux.core.base import ForwardModelResult, ITransportOperator
 from enforceflux.flexpart.wrapper import FlexpartWrapper
 from enforceflux.instrument import Instrument
@@ -117,9 +118,6 @@ class FlexpartTransportOperator(ITransportOperator):
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _resolve_path(self, value: str | Path) -> Path:
-        path = Path(value)
-        if path.is_absolute():
-            return path
         # Mirror FlexpartWrapper: resolve relative paths against the repo root.
         repo_root = Path(__file__).resolve().parents[3]
-        return (repo_root / path).resolve()
+        return resolve_path(value, base=repo_root)

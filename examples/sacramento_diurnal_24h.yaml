@@ -1,0 +1,102 @@
+# ============================================================================
+# Sacramento Valley, 2020-03-31 — a full diurnal cycle in MicroHH LES
+# ============================================================================
+#   python examples/microhh_sacramento_diurnal.py
+#
+# WHY THIS IS A SEQUENCE, NOT ONE RUN
+# -----------------------------------
+# MicroHH takes ONE steady wind + surface heat flux for a whole run
+# (`to_microhh_forcing` collapses a MetSeries to a single vector). The real
+# 31 March 2020 day does not hold still: ERA5 has it swinging from a stable
+# night (H ~ -25 W m-2, boundary layer ~250 m) to deep convection
+# (H ~ +205 W m-2, ~2000 m). Collapsing that to one number would simulate 24 h
+# of perpetual afternoon and miss the nocturnal trapping entirely — which is
+# where a ground-level leak produces its HIGHEST near-surface concentrations.
+#
+# So the driver runs EIGHT 3-hourly segments, each forced by its own ERA5
+# record, and stitches the results. Each segment re-spins its own turbulence
+# from a smooth initial field, so there is no eddy continuity across a segment
+# boundary — the sequence samples the diurnal cycle, it does not evolve
+# through it. Treat each segment's first `spinup_seconds` as non-physical.
+#
+# Everything below is the standard transport contract (see
+# apps/transport_main.yaml): domain.origin_lon/lat is the only geographic
+# coordinate, all sources and receptors are metres east/north of it.
+# ============================================================================
+
+transport:
+  model: microhh
+  mode: simulation
+  # The window the met is read over. The driver slices it into 3 h segments.
+  start: "2020-03-31T00:00:00"
+  end:   "2020-04-01T00:00:00"
+
+met:
+  era5:
+    meteo_dir: ../runs/sacramento_valley_2020/meteo_april_week
+    surface_roughness_m: 0.15      # cropland
+    friction_velocity: log_law
+
+domain:
+  origin_lon: -121.75
+  origin_lat: 39.15
+  x_min: -4300.0
+  x_max:  4300.0
+  y_min: -4450.0
+  y_max:  4450.0
+  spacing_m: 100.0
+  receptor_height_m: 2.0
+
+sources:
+  - id: leak
+    x_m: 0.0
+    y_m: 0.0
+    alt_m: 5.0
+    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
+
+receptors:
+  - {id: tower_n, x_m:    0.0, y_m:  650.0, alt_m: 3.0}
+  - {id: tower_e, x_m:  600.0, y_m:    0.0, alt_m: 3.0}
+  - {id: tower_s, x_m:    0.0, y_m: -650.0, alt_m: 3.0}
+
+output:
+  path: ../runs/sacramento_diurnal_24h/canonical.nc
+  compress: true
+  keep_native: true
+
+microhh:
+  executable: ../microhh/build/microhh
+  num_workers: 4                 # 2x2 decomposition; needs the MPI build
+
+  # ktot=96 / zsize=3072 (dz = 32 m, unchanged) rather than the usual 2048:
+  # the sponge layer occupies the top ~25% (from 2304 m), and the 21 UTC
+  # convective boundary layer reaches 2014 m. A 2048 m box would have that
+  # day's mixed layer growing straight into the damping layer.
+  grid: {itot: 192, jtot: 96, ktot: 96, xsize: 3840.0, ysize: 1920.0, zsize: 3072.0}
+
+  # 0.25*xsize rather than the 0.15 default. The receptors sit up to 650 m from
+  # the source in ANY direction, and each segment rotates the box to its own
+  # wind; at 0.15 (576 m) the upwind tower lands at x = -70 m and MicroHH
+  # rejects the column as outside the domain.
+  source_x0: 960.0
+
+  # Each segment integrates spinup + runtime = 12600 s. The driver discards
+  # the first 1800 s and maps the remaining 3 h onto the ERA5 record's own
+  # 3-hourly window, so the eight segments tile the day contiguously.
+  spinup_seconds: 1800
+  runtime_seconds: 10800         # 3 h retained — one ERA5 record's worth
+  sampletime: 60                 # stats / cross / column cadence
+
+  # Per-segment the driver passes a single MetRecord, so this reduction is the
+  # identity — it is NOT a daytime average over the day.
+  met_reduce: mean
+
+  # 3-D field output: raw binaries (ch4.0000060, ...) that
+  # microhh/python/3d_to_nc.py converts to a (time, z, y, x) NetCDF.
+  # 300 s over 24 h is 288 snapshots ~= 3.9 GB at this grid; at the 60 s
+  # column cadence it would be ~19 GB.
+  extra_ini:
+    dump:
+      swdump: 1
+      dumplist: ch4
+      sampletime: 300

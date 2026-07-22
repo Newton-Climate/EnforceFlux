@@ -44,7 +44,16 @@ def _proj(cfg: MicroHHConfig) -> BoxProjection:
 
 
 def _column_index(x_m: float, y_m: float, cfg: MicroHHConfig) -> tuple[int, int]:
-    return int(x_m / cfg.grid.dx), int(y_m / cfg.grid.dy)
+    """Grid index of the column MicroHH actually wrote for this location.
+
+    ``case.py`` rounds the projected coordinate before writing it into the
+    ``.ini``, and MicroHH derives the column index from that rounded value. So
+    the index must be recomputed the same way: truncating the unrounded
+    projection instead disagrees whenever a receptor lands within half a metre
+    below a cell boundary (e.g. x=659.7 -> 32 by truncation, but the file on
+    disk is 33), and the read fails with a missing-column error.
+    """
+    return int(round(x_m) / cfg.grid.dx), int(round(y_m) / cfg.grid.dy)
 
 
 def find_column_file(cfg: MicroHHConfig, ix: int, iy: int) -> Path | None:

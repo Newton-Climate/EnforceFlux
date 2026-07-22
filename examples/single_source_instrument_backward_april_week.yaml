@@ -1,0 +1,80 @@
+# Backward-mode FLEXPART config — April 1-7 2020 (7-day window).
+#
+# Running over a full week rather than a single calm day gives a more
+# representative backward footprint.  April 2020 in the Sacramento Valley
+# transitions from winter westerly flow to spring thermal patterns; even a
+# few days with 2-4 m/s westerly winds will shift the footprint peak from
+# the sensor cells toward the upwind source location.
+#
+# Run via examples/single_source_instrument_demo.py
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_april_week/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_april_week/
+  run_dir:       ../runs/single_source_instrument/backward_run_april_week/
+
+simulation:
+  start: "2020-04-01T00:00:00"
+  end:   "2020-04-08T00:00:00"
+  output_step_seconds: 10800   # 3-hour output steps
+  sync_seconds: 3600
+  nxshift: 0
+
+domain:
+  lon_min: -121.98
+  lat_min:  39.02
+  lon_max: -121.52
+  lat_max:  39.48
+  dx: 0.025
+  dy: 0.025
+  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24
+
+# Same sensor geometry as the 1-day April run.
+# April westerlies send plume east; sensors are east of the source.
+#   OP_crossplume : 500 m N-S open-path beam crossing the eastward plume axis
+#   point_ESE     : point sensor ESE of source
+#   point_ENE     : point sensor ENE of source
+#
+# Particle count kept at 50 000 per sensor — empirically confirmed safe limit
+# for FLEXPART 11.0 on macOS (higher counts trigger SIGTRAP heap corruption).
+sources:
+  - type: point
+    id: OP_crossplume
+    lon: -121.62
+    lat:  39.15
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-01T00:00:00"
+    end:   "2020-04-08T00:00:00"
+
+  - type: point
+    id: point_ESE
+    lon: -121.60
+    lat:  39.08
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-01T00:00:00"
+    end:   "2020-04-08T00:00:00"
+
+  - type: point
+    id: point_ENE
+    lon: -121.60
+    lat:  39.22
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-01T00:00:00"
+    end:   "2020-04-08T00:00:00"
+
+output:
+  path: ../runs/single_source_instrument/backward_footprints_april_week.nc
+  compress: true
+  per_source: true

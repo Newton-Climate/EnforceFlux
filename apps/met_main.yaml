@@ -1,49 +1,89 @@
-# ERA5 meteorology download config for FLEXPART forcing.
-#
-# Usage:
+# ============================================================================
+# ERA5 meteorology download — apps/met_main.py
+# ============================================================================
 #   python apps/met_main.py --config apps/met_main.yaml
+#
+# Downloads ERA5 from the CDS and writes the EA* GRIB files plus the AVAILABLE
+# index that FLEXPART reads. Every downstream run (simulation_main,
+# transport_main, and the ERA5-forced MicroHH cases) consumes this output.
+#
+# Needs cdsapi credentials and the `meteo` extra: pip install enforceflux[meteo]
+# Downloads are slow (CDS queues) and large — see met_april_week.yaml for a
+# longer-window variant of this same schema.
+#
+# Relative paths resolve against THIS FILE's directory.
+# ============================================================================
 
+
+# ─── meteo: where the FLEXPART-ready files land ─────────────────────────────
 meteo:
-  # Directory to write EA* GRIB files and AVAILABLE.
+  # Directory for the EA* GRIB files and AVAILABLE. Point a run's
+  # flexpart.meteo_dir / available_file at this.
   output_dir: ../runs/sacramento_valley_2020/meteo_era5
+
   # Optional custom AVAILABLE filename. Defaults to AVAILABLE.
   available_filename: AVAILABLE
 
+
+# ─── era5: what to request ──────────────────────────────────────────────────
 era5:
-  # Requested simulation window in UTC ISO format.
+  # Requested window in UTC ISO format. Give at least one buffer step either
+  # side of the simulation window — FLEXPART interpolates between met times and
+  # aborts if a run reaches past the last AVAILABLE entry.
   start: "2020-07-01T00:00:00"
   end: "2020-07-02T00:00:00"
 
-  # Temporal step in hours used for requested ERA5 timesteps.
+  # Temporal step (hours) between ERA5 timesteps. 1 is the ERA5 native rate;
+  # 3 is a common compromise. Coarser steps mean more interpolation across
+  # wind shifts, which blurs near-field plume direction.
   timestep_hours: 3
 
-  # Set to model_levels for FLEXPART-compatible ECMWF hybrid-level inputs.
-  # Use pressure_levels only when you explicitly want pressure-level products.
+  # model_levels    — ECMWF hybrid sigma-pressure levels. REQUIRED for
+  #                   FLEXPART, which needs the native vertical coordinate.
+  # pressure_levels — pressure-level products; use only when you explicitly
+  #                   want them (they are not FLEXPART-compatible).
   vertical_mode: model_levels
 
-  # Optional for pressure_levels mode. Leave empty to use package defaults.
+  # Only for pressure_levels mode. Empty = package defaults.
   pressure_levels: []
 
-  # Model-level download options.
+  # ── model-level download options ──
+  # Native ERA5 resolution is 0.25 deg (~28 km). Requesting finer only
+  # interpolates — it adds no information, and is why FLEXPART cannot resolve
+  # a sub-kilometre plume however fine its own output grid is.
   model_level_grid_deg: 0.25
+
+  # If the sub-area request fails, fall back to a global download. Off by
+  # default: a global model-level request is enormous.
   model_level_allow_global_fallback: false
 
-  # Delete per-day raw ERA5 downloads after splitting/merging EA files.
+  # Delete the per-day raw downloads after splitting/merging into EA files.
+  # Keep them (false) while debugging the pipeline; set true to save disk.
   cleanup_raw_daily_grib: false
 
-  # Bounding box can be mapping or [lon_min, lat_min, lon_max, lat_max].
+  # Bounding box — mapping (as here) or [lon_min, lat_min, lon_max, lat_max].
+  # Pad generously around the simulation domain: particles that leave the met
+  # box cannot be transported, so a tight box silently truncates plumes.
   bbox:
     lon_min: -122.5
     lat_min: 38.6
     lon_max: -121.0
     lat_max: 39.8
 
-# Optional credential override. If omitted, cdsapi uses ~/.cdsapirc.
+
+# ─── credentials ────────────────────────────────────────────────────────────
+# Optional override. If omitted, cdsapi uses ~/.cdsapirc.
 credentials:
   # cdsapirc: ~/.cdsapirc
 
+
+# ─── run: download behaviour ────────────────────────────────────────────────
 run:
-  # If true, skip download when AVAILABLE already covers start->end.
+  # If true, skip the download when AVAILABLE already covers start->end.
+  # Leave false to force a re-download (e.g. after changing bbox or
+  # resolution, which the coverage check does NOT inspect).
   skip_if_available_covers_window: false
-  # Timestep used by coverage check; keep aligned with era5.timestep_hours.
+
+  # Timestep the coverage check assumes. Keep aligned with era5.timestep_hours,
+  # or the check can pass on a series that is actually coarser than requested.
   check_timestep_hours: 3

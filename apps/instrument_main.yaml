@@ -1,22 +1,78 @@
-# YAML config for apps/instrument_main.py
+# ============================================================================
+# Instrument forward operator — apps/instrument_main.py
+# ============================================================================
+#   python apps/instrument_main.py --config apps/instrument_main.yaml
+#
+# Applies the instrument operator H and a heteroscedastic noise model to a
+# simulated concentration field:   y = H(field) + eps
+# Turns a physical field into what each deployed instrument would actually
+# report, including detection limits and dropout.
+#
+# Relative paths resolve against THIS FILE's directory.
+# ============================================================================
 
+
+# ─── input: the field to sample ─────────────────────────────────────────────
 input:
+  # Simulation output to sample — e.g. from apps/simulation_main.py or
+  # apps/transport_main.py.
   simulation_netcdf: ../outputs/simulation_main.nc
-  variable_name: ch4_mixing_ratio
-  level_index: 0
-  release_index: 0
 
+  # Variable to read. FLEXPART writes `ch4_mixing_ratio` (despite the name,
+  # its units are ng m-3).
+  variable_name: ch4_mixing_ratio
+
+  # Which slice of a multi-dimensional field to sample.
+  level_index: 0     # vertical level; 0 = the surface layer
+  release_index: 0   # release/pointspec index; 0 unless the run used
+                     #   per-source output (IOUTPUTFOREACHRELEASE)
+
+
+# ─── operator: noise model ──────────────────────────────────────────────────
 operator:
+  # Seed for the noise draw and dropout. Fix it for reproducible OSSEs;
+  # change it to generate independent realisations of the same scenario.
   random_seed: 42
 
+
+# ─── instruments: the deployment ────────────────────────────────────────────
+# One entry per deployed instrument. `tech_id` selects the technology row in
+# INSTRUMENT_DB (noise, detection limit, operator type); `mode` selects the
+# operating-condition row within it.
+#
+# AVAILABLE tech_id  ->  operator            observable
+#   OP        line_integral         concentration_ppm      open-path laser
+#   EC        ec_footprint          flux_nmol_m2_s         eddy covariance
+#   CH        point_flux            flux_nmol_m2_s         chamber
+#   AIR       column_aircraft       column_ppb             aircraft column
+#   MSAT      column_satellite      column_ppb             satellite column
+#   LP_ESN    multi_path_inversion  emission_rate_kg_hr    multi-path network
+#   IM_LS     plume_imaging         emission_rate_kg_hr    imaging
+#   BP_GML    lidar_path_integral   emission_rate_kg_hr    active LiDAR
+#
+# MODES: only LP_ESN, IM_LS and BP_GML define all three of
+# good | challenging | bad. OP, EC, CH, AIR and MSAT are `good`-only —
+# asking for another mode raises.
+#
+# NOTE the last four report an emission rate directly (kg/hr), not a
+# concentration: they embed their own inversion, so they are not comparable
+# like-for-like with a concentration sensor.
 instruments:
-  - id: OP_west
-    tech_id: OP
-    mode: good
+  - id: OP_west          # unique label
+    tech_id: OP          # see table above
+    mode: good           # must exist for this tech_id
     lon: -122.2
     lat: 38.9
-    z: 2.0
-    response_scale: 1.0
+    z: 2.0               # sampling height (m AGL)
+    response_scale: 1.0  # linear gain on the response; 1.0 = nominal.
+                         #   Use to represent a miscalibrated or degraded unit.
+
+    # Further per-deployment geometry, defaults shown — relevant only to the
+    # operator this tech_id uses:
+    #   path_length_m: 200.0          # OP / LP_ESN beam length
+    #   path_bearing_deg: 0.0         # deg cw from north
+    #   footprint_sigma_m: 100.0      # EC turbulent footprint width
+    #   footprint_wind_dir_deg: 270.0 # EC footprint orientation (from-direction)
 
   - id: OP_central
     tech_id: OP
@@ -26,7 +82,7 @@ instruments:
     z: 2.0
     response_scale: 1.0
 
-  - id: EC_north
+  - id: EC_north         # flux tower: reports flux, not concentration
     tech_id: EC
     mode: good
     lon: -121.4
@@ -34,6 +90,14 @@ instruments:
     z: 2.0
     response_scale: 1.0
 
+
+# ─── output ─────────────────────────────────────────────────────────────────
 output:
+  # Observations, the instrument-modified operator H·G, and the noise
+  # covariance R — the inputs a Bayesian inversion needs.
   instrument_netcdf: ../outputs/instrument_main.nc
+
+  # Flat per-(time, instrument) table of the same observations. Values are NaN
+  # where an observation was dropped (below detection limit or dropout); those
+  # entries carry infinite variance in R rather than being silently zero.
   timeseries_csv: ../outputs/instrument_observations.csv
