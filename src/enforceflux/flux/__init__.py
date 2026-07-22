@@ -12,11 +12,12 @@ Each is registered under the ``enforceflux.flux`` entry-point group as an
 :class:`~enforceflux.core.base.IFluxEstimator`.
 """
 from enforceflux.flux.inversion_estimator import InversionFluxEstimator
-from enforceflux.flux.eddy_covariance import EddyCovarianceFluxEstimator
+from enforceflux.flux.eddy_covariance import EddyCovarianceFluxEstimator, EddyCovarianceWindow
 from enforceflux.flux.flux_gradient import FluxGradientFluxEstimator
 
 __all__ = [
     "InversionFluxEstimator",
     "EddyCovarianceFluxEstimator",
+    "EddyCovarianceWindow",
     "FluxGradientFluxEstimator",
 ]
