@@ -243,8 +243,19 @@ def create_simulation_movie(
     units: str = "",
     title_prefix: str = "CH4 concentration",
     figsize: tuple = (7, 5),
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    overlay=None,
 ):
-    """Create an animation of concentration change over time."""
+    """Create an animation of concentration change over time.
+
+    ``xlabel``/``ylabel`` override the default axis names. They matter for
+    non-geographic output: an LES box is in local metres, so labelling its axes
+    "Longitude"/"Latitude" would be simply wrong.
+
+    ``overlay`` is an optional ``callable(ax)`` invoked once after the axes are
+    built, for static annotation such as a source footprint.
+    """
     _require_mpl()
     from matplotlib.animation import FuncAnimation
 
@@ -309,12 +320,18 @@ def create_simulation_movie(
     label = units if units else "Concentration"
     cb.set_label(f"{label} (log scale)" if use_log_scale else label)
 
-    if extent is None:
+    if xlabel is not None or ylabel is not None:
+        ax.set_xlabel(xlabel if xlabel is not None else "")
+        ax.set_ylabel(ylabel if ylabel is not None else "")
+    elif extent is None:
         ax.set_xlabel("x index")
         ax.set_ylabel("y index")
     else:
         ax.set_xlabel("Longitude")
         ax.set_ylabel("Latitude")
+
+    if overlay is not None:
+        overlay(ax)
 
     def _frame_title(i: int) -> str:
         tag = time_labels[i] if time_labels is not None else f"t={i}"
