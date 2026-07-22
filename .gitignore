@@ -1,3 +1,4 @@
+*.png
 # Python
 __pycache__/
 *.py[cod]
@@ -13,13 +14,19 @@ runs/
 # macOS
 .DS_Store
 
-# Test cache
+# Test cache and coverage
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
 
-# FLEXPART build artifacts (keep src/*.f90 but not compiled objects)
-# Vendored MicroHH clone (see: make install-microhh)
+# Vendored upstream clones — nested git repos recreated by their make targets,
+# never tracked here (see: make install-flexpart, make install-microhh)
+/flexpart/
 /microhh/
 
+# FLEXPART build artifacts (redundant while /flexpart/ is ignored wholesale;
+# kept so the rules survive if that directory is ever tracked again)
 flexpart/src/*.o
 flexpart/src/*.mod
 flexpart/src/FLEXPART
@@ -27,6 +34,20 @@ flexpart/src/FLEXPART_ETA
 flexpart/tests/testdata/
 flexpart/tests/__pycache__/
 
-# Editor
+# Vendored AtmosTransport.jl clone (a nested git repo, like /microhh/)
+/AtmosTransport.jl/
+
+# Slide-generation tooling
+node_modules/
+
+# Documents and generated decks — reference papers, exported presentations.
+# Nothing of these types is tracked; narrow these if a doc should be versioned.
+*.pdf
+*.pptx
+*.docx
+*.pptx.inspect.ndjson
+
+# Editor and agent scratch
 .idea/
 .vscode/
+.codex/
