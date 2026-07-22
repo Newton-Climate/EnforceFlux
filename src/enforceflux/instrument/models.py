@@ -35,8 +35,14 @@ class Instrument:
     # Column instruments: per-level averaging kernel (None → uniform weighting)
     averaging_kernel: np.ndarray | None = field(default=None, compare=False, repr=False)
 
+    # Optional per-deployment override of the INSTRUMENT_DB entry (e.g. a
+    # zero detection limit for enhancement-based OSSEs)
+    params_override: OperatorParams | None = field(default=None, compare=False, repr=False)
+
     @property
     def params(self) -> OperatorParams:
+        if self.params_override is not None:
+            return self.params_override
         try:
             return INSTRUMENT_DB[self.tech_id][self.mode]
         except KeyError:
