@@ -20,8 +20,16 @@ def test_new_config_parsing(tmp_path):
                 "config": {"instruments": []},
             },
             "transport_operator": {
-                "plugin": "enforceflux.transport_operator.gaussian",
-                "config": {"sigma": 1.0, "wind": [0.0, 0.0]},
+                "plugin": "enforceflux.transport_operator.aermod",
+                "config": {
+                    "met": [
+                        {
+                            "wind_speed_m_s": 3.0,
+                            "wind_direction_deg": 270.0,
+                            "stability_class": "D",
+                        }
+                    ]
+                },
             },
             "inversion": {
                 "plugin": "enforceflux.inversion.bayesian",
@@ -35,4 +43,5 @@ def test_new_config_parsing(tmp_path):
 
     config = load_config(path)
     assert config.domain.crs == "EPSG:32610"
-    assert config.component("transport_operator").config["sigma"] == 1.0
+    met = config.component("transport_operator").config["met"]
+    assert met[0]["wind_speed_m_s"] == 3.0

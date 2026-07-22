@@ -3,7 +3,7 @@ name = "enforceflux"
 version = "0.1.0"
 description = "OSSE framework for methane flux monitoring systems"
 requires-python = ">=3.10"
-dependencies = ["numpy", "pyproj", "netCDF4", "pytest-cov"]
+dependencies = ["numpy", "pyproj", "netCDF4", "pytest-cov", "jax", "pyyaml"]
 
 [project.scripts]
 enforceflux = "enforceflux.cli:main"
@@ -21,11 +21,12 @@ static = "enforceflux.plugins.source_static:StaticSourceModel"
 static = "enforceflux.plugins.instrument_static:StaticInstrumentModel"
 
 [project.entry-points."enforceflux.transport_operator"]
-gaussian = "enforceflux.plugins.transport_gaussian:GaussianTransportOperator"
+aermod = "enforceflux.plugins.transport_aermod:AermodTransportOperator"
 flexpart = "enforceflux.plugins.transport_flexpart:FlexpartTransportOperator"
 microhh = "enforceflux.plugins.transport_microhh:MicroHHTransportOperator"
 
 [project.entry-points."enforceflux.transport_simulation"]
+aermod = "enforceflux.plugins.simulation_aermod:AermodSimulationModel"
 flexpart = "enforceflux.plugins.simulation_flexpart:FlexpartSimulationModel"
 microhh = "enforceflux.plugins.simulation_microhh:MicroHHSimulationModel"
 
