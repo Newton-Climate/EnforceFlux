@@ -1,117 +1,33 @@
 import os
-import shutil
 import subprocess
-from dataclasses import dataclass
+import shutil
 from datetime import datetime as _DT
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 
-from enforceflux.models.config import DomainConfig
+from enforceflux.backend import UnitEmissionRunner
 from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
 
 
-@dataclass(frozen=True)
-class FlexpartRunResult:
-    g: np.ndarray
-    meta: dict[str, Any]
+class FlexpartRunner(UnitEmissionRunner):
+    model_name = "FLEXPART"
+    output_glob = "*.nc"
+    default_run_dir = "runs/flexpart"
 
-
-class FlexpartRunner:
-    def __init__(self, domain: DomainConfig, config: dict[str, Any]) -> None:
-        self.domain = domain
-        self.config = config
-
-    def run(
-        self,
-        sources: Iterable[Source],
-        instruments: Iterable[Instrument],
-    ) -> FlexpartRunResult:
-        sources = list(sources)
-        instruments = list(instruments)
-
-        if not self.domain.crs:
-            raise ValueError("domain.crs must be set to use FLEXPART transport")
-
-        try:
-            from pyproj import Transformer
-        except ImportError as exc:  # pragma: no cover - optional dependency
-            raise RuntimeError("pyproj is required for FLEXPART coordinate conversion") from exc
-
-        transformer = Transformer.from_crs(
-            self.domain.crs, self.domain.crs_wgs84, always_xy=True
-        )
-
-        base_run_dir = self._resolve_path(self.config.get("base_run_dir", "runs/flexpart"))
-        base_run_dir.mkdir(parents=True, exist_ok=True)
-
-        g = np.zeros((len(instruments), len(sources)))
-        meta: dict[str, Any] = {"runs": []}
-
-        for j, source in enumerate(sources):
-            run_dir = base_run_dir / f"source_{source.id}"
-            options_dir = run_dir / "options"
-            output_dir_name = self.config.get("output_dir", "output")
-            output_dir = run_dir / output_dir_name
-            pathnames_path = run_dir / "pathnames"
-
-            if self.config.get("dry_run", False):
-                self._prepare_run_dir(
-                    run_dir=run_dir,
-                    options_dir=options_dir,
-                    output_dir=output_dir,
-                    pathnames_path=pathnames_path,
-                    source=source,
-                    instruments=instruments,
-                    transformer=transformer,
-                )
-                meta["runs"].append({"source": source.id, "run_dir": str(run_dir)})
-                continue
-
-            if self._should_run(output_dir):
-                self._prepare_run_dir(
-                    run_dir=run_dir,
-                    options_dir=options_dir,
-                    output_dir=output_dir,
-                    pathnames_path=pathnames_path,
-                    source=source,
-                    instruments=instruments,
-                    transformer=transformer,
-                )
-                self._execute(run_dir, pathnames_path)
-                receptor_values = self._read_receptors(output_dir, instruments)
-            else:
-                receptor_values = self._read_receptors(output_dir, instruments)
-
-            unit_emission_rate = float(self.config.get("unit_emission_rate", 1.0))
-            g[:, j] = receptor_values / unit_emission_rate
-            meta["runs"].append(
-                {
-                    "source": source.id,
-                    "run_dir": str(run_dir),
-                    "output_dir": str(output_dir),
-                }
-            )
-
-        return FlexpartRunResult(g=g, meta=meta)
-
-    def _should_run(self, output_dir: Path) -> bool:
-        if not self.config.get("cache", True):
-            return True
-        return not any(output_dir.glob("*.nc"))
-
-    def _prepare_run_dir(
+    def _prepare_run(
         self,
         run_dir: Path,
-        options_dir: Path,
         output_dir: Path,
-        pathnames_path: Path,
         source: Source,
         instruments: list[Instrument],
         transformer: Any,
     ) -> None:
+        options_dir = run_dir / "options"
+        pathnames_path = run_dir / "pathnames"
+
         options_template = self._resolve_path(self.config.get("options_dir", "flexpart/options"))
         if not options_template.exists():
             raise FileNotFoundError(f"Options directory not found: {options_template}")
@@ -157,7 +73,8 @@ class FlexpartRunner:
             transformer=transformer,
         )
 
-    def _execute(self, run_dir: Path, pathnames_path: Path) -> None:
+    def _execute(self, run_dir: Path) -> None:
+        pathnames_path = run_dir / "pathnames"
         executable = self._resolve_path(self.config.get("executable", "flexpart/src/FLEXPART"))
         if not executable.exists():
             raise FileNotFoundError(f"FLEXPART executable not found: {executable}")
@@ -168,7 +85,7 @@ class FlexpartRunner:
         command = [str(executable), str(pathnames_path)]
         subprocess.run(command, cwd=run_dir, check=True, env=env)
 
-    def _read_receptors(self, output_dir: Path, instruments: list[Instrument]) -> np.ndarray:
+    def _read_receptor_values(self, output_dir: Path, instruments: list[Instrument]) -> np.ndarray:
         try:
             from netCDF4 import Dataset
         except ImportError as exc:  # pragma: no cover - optional dependency
@@ -290,9 +207,14 @@ class FlexpartRunner:
         meteo_dir: Path,
         available_file: Path,
     ) -> None:
+        # FLEXPART truncates each pathnames entry to a fixed 120-char buffer
+        # (com_mod.f90), which breaks runs under deep temp dirs. FLEXPART runs
+        # with cwd=run_dir and options/ and output/ are direct children, so
+        # write them relative to keep entries short. See simulation.py.
+        run_dir = path.parent
         lines = [
-            str(options_dir),
-            str(output_dir),
+            f"{os.path.relpath(options_dir, run_dir)}/",
+            f"{os.path.relpath(output_dir, run_dir)}/",
             str(meteo_dir),
             str(available_file),
         ]
@@ -370,9 +292,3 @@ class FlexpartRunner:
             lines.append(f" ALT=  {inst.z:.3f},")
             lines.append(" /")
         path.write_text("\n".join(lines) + "\n")
-
-    def _resolve_path(self, value: str | Path) -> Path:
-        path = Path(value)
-        if path.is_absolute():
-            return path
-        return (Path.cwd() / path).resolve()

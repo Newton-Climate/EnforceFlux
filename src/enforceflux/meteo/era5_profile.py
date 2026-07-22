@@ -86,8 +86,8 @@ def met_series_from_era5(
     MetSeries
         One record per ERA5 timestep at the sampled grid point.
     """
-    import eccodes as ec  # imported lazily: eccodes is an optional extra
-
+    # Validate arguments before requiring the optional eccodes dependency so
+    # bad-input errors surface regardless of whether eccodes is installed.
     meteo_path = Path(meteo_dir)
     if not meteo_path.is_dir():
         raise FileNotFoundError(f"ERA5 meteo directory not found: {meteo_path}")
@@ -96,6 +96,8 @@ def met_series_from_era5(
         raise ValueError(
             f"friction_velocity must be 'log_law' or 'stress', got {friction_velocity!r}"
         )
+
+    import eccodes as ec  # imported lazily: eccodes is an optional extra
 
     window = (_parse_time(start), _parse_time(end))
     files = sorted(p for p in meteo_path.glob(pattern) if p.is_file() and "static" not in p.name)

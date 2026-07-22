@@ -3,6 +3,7 @@
 The adapter tests build :class:`MetRecord`s directly so they run anywhere; the
 ERA5 reader tests need real GRIB files and skip when they are absent.
 """
+import importlib.util
 import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -21,7 +22,8 @@ ERA5_DIR = Path(__file__).resolve().parents[1] / "runs" / "sacramento_valley_202
 SACRAMENTO = (-121.75, 39.15)
 
 requires_era5 = pytest.mark.skipif(
-    not ERA5_DIR.is_dir(), reason="ERA5 GRIB test data not present"
+    not ERA5_DIR.is_dir() or importlib.util.find_spec("eccodes") is None,
+    reason="ERA5 GRIB test data not present or eccodes not installed",
 )
 
 

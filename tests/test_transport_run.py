@@ -7,6 +7,7 @@ far as they can go without a compiled executable — which is exactly the
 contract that matters for them: the native config generated from the shared
 YAML must load with that model's own loader.
 """
+import importlib.util
 from pathlib import Path
 
 import numpy as np
@@ -29,7 +30,8 @@ ERA5_DIR = (
     Path(__file__).resolve().parents[1] / "runs" / "sacramento_valley_2020" / "meteo_april_week"
 )
 requires_era5 = pytest.mark.skipif(
-    not ERA5_DIR.is_dir(), reason="ERA5 GRIB test data not present"
+    not ERA5_DIR.is_dir() or importlib.util.find_spec("eccodes") is None,
+    reason="ERA5 GRIB test data not present or eccodes not installed",
 )
 # FLEXPART can only be driven by GRIB, so the cross-model tests use ERA5.
 ERA5_MET = {
