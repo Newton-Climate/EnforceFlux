@@ -3,8 +3,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from enforceflux.models.config import DomainConfig
+from enforceflux.backend import UnitRunResult, resolve_path
 from enforceflux.flexpart.build import FlexpartBuildResult, FlexpartCompiler
-from enforceflux.flexpart.runner import FlexpartRunResult, FlexpartRunner
+from enforceflux.flexpart.runner import FlexpartRunner
 from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
 
@@ -38,7 +39,7 @@ class FlexpartWrapper:
         self,
         sources: Iterable[Source],
         instruments: Iterable[Instrument],
-    ) -> FlexpartRunResult:
+    ) -> UnitRunResult:
         dry_run_config = dict(self.config)
         dry_run_config["dry_run"] = True
         runner = FlexpartRunner(domain=self.domain, config=dry_run_config)
@@ -50,7 +51,7 @@ class FlexpartWrapper:
         instruments: Iterable[Instrument],
         *,
         build_if_missing: bool | None = None,
-    ) -> FlexpartRunResult:
+    ) -> UnitRunResult:
         should_build = self.config.get("build_if_missing", False)
         if build_if_missing is not None:
             should_build = build_if_missing
@@ -77,10 +78,7 @@ class FlexpartWrapper:
         return self.compiler.smoke_test(cwd=cwd, args=args, env=env)
 
     def _resolve_path(self, value: str | Path) -> Path:
-        path = Path(value)
-        if path.is_absolute():
-            return path
-        return (self._repo_root() / path).resolve()
+        return resolve_path(value, base=self._repo_root())
 
     def _repo_root(self) -> Path:
         return Path(__file__).resolve().parents[3]
