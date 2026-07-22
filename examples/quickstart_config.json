@@ -66,17 +66,45 @@
         ]
       }
     },
-    "transport": {
-      "plugin": "enforceflux.transport.gaussian",
+    "transport_operator": {
+      "plugin": "enforceflux.transport_operator.aermod",
       "config": {
-        "sigma": 200.0,
-        "wind": [50.0, 0.0]
+        "met": [
+          {
+            "wind_speed_m_s": 3.0,
+            "wind_direction_deg": 270.0,
+            "stability_class": "D",
+            "mixing_height_m": 800.0
+          },
+          {
+            "wind_speed_m_s": 3.0,
+            "wind_direction_deg": 315.0,
+            "stability_class": "C",
+            "mixing_height_m": 800.0
+          },
+          {
+            "wind_speed_m_s": 3.0,
+            "wind_direction_deg": 180.0,
+            "stability_class": "D",
+            "mixing_height_m": 800.0
+          },
+          {
+            "wind_speed_m_s": 3.0,
+            "wind_direction_deg": 105.0,
+            "stability_class": "E",
+            "mixing_height_m": 800.0
+          }
+        ],
+        "default_stack": {
+          "height_m": 5.0
+        },
+        "concentration_units": "ug_m3_per_g_s"
       }
     },
     "inversion": {
       "plugin": "enforceflux.inversion.bayesian",
       "config": {
-        "r_cond": 1e-6
+        "r_cond": 1e-06
       }
     }
   }

@@ -1,0 +1,85 @@
+# MicroHH LES forced by the SAME ERA5 met FLEXPART uses.
+#
+# Forcing extracted from runs/.../meteo_april_week/EA2020033000 at the source
+# column (31 Mar 2020, 00 UTC = 16:00 PST, convective afternoon):
+#   BL-mean wind : ~3.3 m/s toward ~21 deg (NNE)
+#   BL height    : ~1710 m
+#   surface theta: ~291 K   (from 2t/sp)
+#   sensible heat: upward (sshf ~ -527 kJ/m2) -> convective, wtheta ~ 0.1 K m/s
+#
+# Box +x is aligned with the real 21 deg wind, and the three receptors sit on
+# that real plume axis (on-axis + -/+25 deg flanks) at 500 m. FLEXPART (real
+# ERA5) and the Gaussian model are sampled at the same points for a matched-
+# forcing comparison.
+
+microhh:
+  executable: ../microhh/build/microhh
+  case_dir:   ../runs/microhh_sacramento_era5/
+
+simulation:
+  name: sacramento_ch4_era5
+  start: "2020-03-31T00:00:00"
+  spinup_seconds: 1800
+  runtime_seconds: 3600
+  sampletime: 60
+
+# Deeper box (zsize 3200 m) to contain the ~1710 m convective BL + inversion
+# + buffer. 192x96x100 at 20 m horizontal / 32 m vertical (~1.8M cells).
+grid:
+  itot: 192
+  jtot: 96
+  ktot: 100
+  xsize: 3840.0
+  ysize: 1920.0
+  zsize: 3200.0
+
+domain:
+  origin_lon: -121.75
+  origin_lat: 39.15
+  x_bearing_deg: 21.0          # real ERA5 wind direction (NNE)
+  source_x0: 576.0
+  source_y0: 960.0
+
+forcing:
+  u_geo: 3.3                    # ERA5 BL-mean wind speed
+  v_geo: 0.0
+  z0m: 0.1
+  z0h: 0.01
+  thl_surface_K: 291.0          # ERA5 2t/sp -> surface potential temperature
+  thl_lapse_K_per_m: 0.003
+  boundary_layer_height_m: 1710.0   # ERA5 blh
+  inversion_strength_K: 2.0
+  inversion_depth_m: 150.0
+  surface_heat_flux_K_m_s: 0.10     # ERA5 sshf (convective, ~0.1 K m/s upward)
+
+species:
+  name: ch4
+  emission_scale: 1.0
+
+sources:
+  - id: sacramento_point
+    lon: -121.75
+    lat: 39.15
+    alt_m: 20.0
+    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
+    sigma_x_m: 25.0
+    sigma_y_m: 25.0
+    sigma_z_m: 25.0
+
+# Receptors on the real 21 deg plume axis (500 m: on-axis + -/+25 deg flanks).
+instruments:
+  - id: rec_axis
+    lon: -121.74792
+    lat:  39.15421
+    alt_m: 20.0
+  - id: rec_left
+    lon: -121.75041
+    lat:  39.15449
+    alt_m: 20.0
+  - id: rec_right
+    lon: -121.74582
+    lat:  39.15313
+    alt_m: 20.0
+
+output:
+  path: ../runs/microhh_sacramento_era5/sacramento_ch4_era5.column.nc

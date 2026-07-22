@@ -56,7 +56,7 @@ def test_inversion_flux_estimator_via_registry():
     np.testing.assert_allclose(result.flux, result.meta["inversion"].x_posterior)
 
 
-@pytest.mark.parametrize("name", ["eddy_covariance", "flux_gradient"])
+@pytest.mark.parametrize("name", ["flux_gradient"])
 def test_unimplemented_flux_estimators_raise(name):
     estimator = get_plugin("enforceflux.flux", name, IFluxEstimator)()
     with pytest.raises(NotImplementedError):

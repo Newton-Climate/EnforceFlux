@@ -1,0 +1,85 @@
+# MicroHH plume-scale LES — Sacramento single methane point source.
+#
+# Near-field synthetic truth for the same source as
+# single_source_instrument_backward_500m.yaml: 100 kg/hr at (-121.75, 39.15),
+# sensors ~500 m downwind. MicroHH resolves the turbulent plume the FLEXPART
+# footprint / Gaussian operators only parameterize.
+#
+# The MicroHH binary is not yet vendored. Generate + inspect inputs with:
+#   python examples/microhh_sacramento_demo.py   # dry_run: writes .ini/.prof
+# then clone/build MicroHH (https://github.com/microhh/microhh), set
+# microhh.executable below, and drop dry_run.
+
+microhh:
+  executable: ../microhh/build/microhh      # set once MicroHH is built
+  case_dir:   ../runs/microhh_sacramento/
+
+simulation:
+  name: sacramento_ch4
+  start: "2020-03-31T00:00:00"
+  spinup_seconds: 7200        # 2 h turbulence spin-up (discarded)
+  runtime_seconds: 21600      # 6 h release + sampling
+  dt_max: 0.5
+  sampletime: 10              # column/stats output cadence (s)
+
+# Box: 3.072 x 1.536 x 2.048 km at 4 m horizontal / 8 m vertical.
+# ~75M cells — a real but tractable single-GPU / CPU-MPI run.
+grid:
+  itot: 768
+  jtot: 384
+  ktot: 256
+  xsize: 3072.0
+  ysize: 1536.0
+  zsize: 2048.0
+
+# Wind-aligned frame: box +x points downwind (ENE, bearing 68°) so the plume
+# develops along x. Source pinned near the upwind edge, centred cross-stream.
+domain:
+  origin_lon: -121.75
+  origin_lat: 39.15
+  x_bearing_deg: 68.0
+  source_x0: 460.0            # ~0.15 * xsize
+  source_y0: 768.0            # 0.5 * ysize
+
+# Idealised dry ABL. Swap for ERA5-nudged profiles (forcing.py) to match the
+# real 31 March 2020 case once that path is wired in.
+forcing:
+  u_geo: 3.0
+  v_geo: 0.0
+  z0m: 0.1
+  z0h: 0.01
+  thl_surface_K: 290.0
+  thl_lapse_K_per_m: 0.003
+  boundary_layer_height_m: 1000.0
+
+species:
+  name: ch4
+  emission_scale: 1.0         # 1.0 = physically calibrated run (strength = kg/s)
+
+sources:
+  - id: sacramento_point_100kghr
+    lon: -121.75
+    lat: 39.15
+    alt_m: 5.0
+    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr (physical; for scaling)
+    sigma_x_m: 15.0
+    sigma_y_m: 15.0
+    sigma_z_m: 5.0
+
+# Receptors = the 500 m sensors (become [column] sample points).
+instruments:
+  - id: sensor_ENE_axis
+    lon: -121.7446
+    lat:  39.1517
+    alt_m: 10.0
+  - id: sensor_NE
+    lon: -121.7460
+    lat:  39.1533
+    alt_m: 10.0
+  - id: sensor_E
+    lon: -121.7442
+    lat:  39.1498
+    alt_m: 10.0
+
+output:
+  path: ../runs/microhh_sacramento/sacramento_ch4.column.nc

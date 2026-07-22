@@ -44,7 +44,7 @@ def test_instrument_plugins():
 )
 def test_transport_operator_plugins():
     plugins = list_plugins("enforceflux.transport_operator", base_cls=ITransportOperator)
-    assert "gaussian" in plugins
+    assert "aermod" in plugins
     assert "flexpart" in plugins
 
 
@@ -56,6 +56,7 @@ def test_transport_simulation_plugins():
     plugins = list_plugins(
         "enforceflux.transport_simulation", base_cls=ITransportSimulation
     )
+    assert "aermod" in plugins
     assert "flexpart" in plugins
 
 

@@ -135,8 +135,17 @@ class FlexpartSimulation:
 
     def _write_pathnames(self, path: Path, options_dir: Path, output_dir: Path) -> None:
         cfg = self.config
+        # FLEXPART stores each pathnames entry in a fixed 120-char buffer
+        # (com_mod.f90: `character :: path(...)*120`) and silently truncates
+        # longer paths, which breaks runs under deep temp dirs (e.g. macOS
+        # pytest tmpdirs). FLEXPART is executed with cwd=run_dir and options/
+        # and output/ are always direct children, so write them relative to
+        # keep entries short regardless of where run_dir lives.
+        run_dir = path.parent
+        options_rel = os.path.relpath(options_dir, run_dir)
+        output_rel = os.path.relpath(output_dir, run_dir)
         path.write_text(
-            "\n".join([str(options_dir), str(output_dir),
+            "\n".join([f"{options_rel}/", f"{output_rel}/",
                        str(cfg.meteo_dir), str(cfg.available_file)]) + "\n"
         )
 

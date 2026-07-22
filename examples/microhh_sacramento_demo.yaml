@@ -1,0 +1,107 @@
+# MicroHH plume demo — reduced-resolution Sacramento single methane source.
+#
+# Small, fast sibling of microhh_sacramento.yaml: a 192x96x64 box at 20 m
+# resolution (~1.2M cells) that runs in minutes on a laptop, to validate the
+# end-to-end pipeline (init -> run -> cross-section plume) — analogous to
+# examples/gaussian_plume_single_source_demo.py for FLEXPART.
+#
+# Physics follows MicroHH's cases/dispersion: passive scalar from a Gaussian
+# blob in a dry convective boundary layer, mean wind along +x with lateral
+# inflow/outflow so the plume advects downwind.
+#
+# Only the settings this case needs are listed. For the full catalogue of
+# available settings — every key, its units, default and trade-offs — see
+# examples/microhh_reference.yaml.
+#
+# Geometry: sources/receptors are given in lon/lat and projected into a
+# wind-aligned box where +x is downwind (domain.x_bearing_deg) and +y is
+# crosswind to the left. Relative paths resolve against THIS file's directory.
+
+microhh:
+  executable: ../microhh/build/microhh     # compiled by `make install-microhh`
+  case_dir:   ../runs/microhh_sacramento_demo/   # .ini/.nc inputs + all output
+
+simulation:
+  name: sacramento_ch4_demo   # basename of every input/output file
+  start: "2020-03-31T00:00:00"  # provenance only — forcing below is steady
+  spinup_seconds: 1800        # 30 min to grow turbulence before sampling
+  runtime_seconds: 3600       # 1 h release + sampling (endtime = 1800+3600)
+  sampletime: 60              # s; shared [stats]/[cross]/[column] cadence
+  # dt_max omitted -> 60 s cap; the CFL limit sets the real step (~dx/U).
+
+# 3.84 x 1.92 x 2.048 km at 20 m horizontal / 32 m vertical (~1.2M cells).
+# Cost scales as itot*jtot*ktot and again as 1/dx via the CFL timestep, so
+# halving dx is roughly 16x the work. zsize sits ~2x the BL depth below so the
+# top-25% sponge layer does not intrude on the plume.
+grid:
+  itot: 192          # cells downwind (x)
+  jtot: 96           # cells crosswind (y) — wide enough that the meandering
+                     #   plume never reaches the lateral boundaries
+  ktot: 64           # cells vertical (z)
+  xsize: 3840.0      # m -> dx = 20 m
+  ysize: 1920.0      # m -> dy = 20 m
+  zsize: 2048.0      # m -> dz = 32 m
+
+domain:
+  origin_lon: -121.75         # tangent-plane anchor = the source
+  origin_lat: 39.15
+  x_bearing_deg: 68.0         # deg cw from north that +x points TOWARD, i.e.
+                              #   the wind direction (ENE). Receptors must lie
+                              #   on this axis to see the plume.
+  source_x0: 576.0            # 0.15 * xsize — near the upwind edge, maximising
+  source_y0: 960.0            # 0.5 * ysize  — downwind fetch, centred crosswind
+
+# Idealised, steady, horizontally uniform ABL: one mean wind vector plus a
+# surface heat flux. (Deriving these from ERA5 for a real hour is what
+# microhh_sacramento_era5.yaml does.)
+forcing:
+  u_geo: 3.0                  # m/s along +x. Dominant dilution control (C ~ 1/U).
+  v_geo: 0.0                  # m/s crosswind; keep 0 so +x stays the plume axis
+  z0m: 0.1                    # m, momentum roughness (~0.1 = cropland)
+  z0h: 0.01                   # m, scalar roughness (conventionally z0m/10)
+  thl_surface_K: 300.0        # K, mixed-layer POTENTIAL temperature (not T)
+  thl_lapse_K_per_m: 0.003    # K/m, free-troposphere stability above inversion
+  boundary_layer_height_m: 1000.0   # m, initial mixed-layer depth (< zsize)
+  inversion_strength_K: 2.0   # K, capping jump — larger lid = less venting
+  inversion_depth_m: 100.0    # m, inversion thickness
+  surface_heat_flux_K_m_s: 0.1  # K m/s kinematic w'th'. THIS drives convection:
+                                #   >0 unstable/daytime, 0 neutral (shear only).
+                                #   From W/m2: wth ~ H/1200. 0.1 = vigorous.
+
+species:
+  name: ch4                   # scalar name, used verbatim in .ini and output
+  emission_scale: 1.0         # 1.0 = physically calibrated (strength = kg/s)
+
+# With swvmr=false, MicroHH normalises the blob so the volume integral of
+# rho*dc/dt equals the emission rate exactly — so emission_rate_kg_s is real
+# kg/s and needs no hand calibration.
+sources:
+  - id: sacramento_point
+    lon: -121.75
+    lat: 39.15
+    alt_m: 20.0                        # m release height (keep >= ~1 dz)
+    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr, physical
+    sigma_x_m: 25.0                    # m blob half-widths — the source is
+    sigma_y_m: 25.0                    #   finite, not a true point. Keep near
+    sigma_z_m: 25.0                    #   dx or it becomes a numerical hotspot.
+
+# Each receptor = one MicroHH [column]: a full vertical profile vs time.
+# Coordinates snap to the nearest grid column (20 m here).
+instruments:
+  - id: sensor_ENE_axis     # on-axis, ~500 m downwind (bearing 68 = x_bearing)
+    lon: -121.7446
+    lat:  39.1517
+    alt_m: 20.0             # advisory; sampling level chosen when reading
+  - id: sensor_NE           # ~500 m, left flank (+210 m crosswind)
+    lon: -121.7460
+    lat:  39.1533
+    alt_m: 20.0
+  - id: sensor_E            # ~500 m, right flank (-210 m crosswind)
+    lon: -121.7442
+    lat:  39.1498
+    alt_m: 20.0
+
+output:
+  # Nominal path recorded in the run result. MicroHH's real output lands in
+  # case_dir as <name>.column.<ix>.<iy>.<iter>.nc plus binary cross-sections.
+  path: ../runs/microhh_sacramento_demo/sacramento_ch4_demo.column.nc

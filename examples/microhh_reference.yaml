@@ -1,0 +1,243 @@
+# ============================================================================
+# MicroHH case configuration — ANNOTATED REFERENCE
+# ============================================================================
+# Every setting accepted by enforceflux.microhh.sim_config.load_microhh_config,
+# with units, defaults, and guidance. This file is documentation, not a case to
+# run as-is: it shows defaults explicitly, which a real config would omit.
+#
+# Copy examples/microhh_sacramento_demo.yaml instead to start a real case.
+#
+# CONVENTIONS
+#   [required]  loader raises KeyError if absent
+#   [optional]  default shown in the comment
+#   Relative paths resolve against THIS FILE's directory (not the cwd).
+#
+# THE FRAME (read this first — everything geometric depends on it)
+#   MicroHH runs in a Cartesian box in metres, but sources/receptors are given
+#   in lon/lat. The loader projects them with a wind-aligned frame:
+#     +x  = downwind, along `domain.x_bearing_deg`
+#     +y  = crosswind, 90 deg to the LEFT of downwind
+#     +z  = up
+#   The source is pinned at (source_x0, source_y0); everything else is placed
+#   relative to it. Aligning +x with the wind is what lets the plume advect out
+#   of the downwind boundary via the inflow/outflow BCs.
+# ============================================================================
+
+
+# ─── microhh: binary + where the case is written ────────────────────────────
+microhh:
+  # [required] Path to the compiled MicroHH binary (`make install-microhh`).
+  executable: ../microhh/build/microhh
+
+  # [optional] default: runs/microhh/<simulation.name>
+  # Working directory for the case. The writer puts <name>.ini and
+  # <name>_input.nc here; MicroHH then writes restart, stats, cross-section and
+  # column files alongside them. Re-runs clear prior output automatically
+  # (MicroHH refuses to overwrite restart files).
+  case_dir: ../runs/microhh_reference/
+
+
+# ─── simulation: identity and timing (all seconds) ──────────────────────────
+simulation:
+  # [optional] default: "case". Basename for every input/output file.
+  name: reference_case
+
+  # [required] ISO-8601. Bookkeeping/provenance only — the idealised forcing
+  # below is steady, so this does NOT select a met time. It matters when you
+  # derive `forcing` from ERA5 for a specific hour (see microhh_sacramento_era5.yaml).
+  start: "2020-03-31T00:00:00"
+
+  # [optional] default: 7200. Turbulence spin-up before the statistics you
+  # care about. The initial state is smooth, so eddies need time to develop;
+  # roughly a few large-eddy turnovers (h/w* ~ 10-15 min for a convective BL).
+  spinup_seconds: 1800
+
+  # [optional] default: 21600. Sampling period after spin-up.
+  # endtime written to the .ini = spinup_seconds + runtime_seconds.
+  runtime_seconds: 3600
+
+  # [optional] default: 60.0. Hard cap on the adaptive timestep (s).
+  # Usually inactive — the CFL condition sets the real step (~dx/U). Lower it
+  # only to debug instability; it cannot make a run more accurate on its own.
+  dt_max: 60.0
+
+  # [optional] default: 10. Output cadence (s) shared by [stats], [cross] and
+  # [column]. Small values give smooth receptor time series but many files:
+  # a cross-section is written per variable per plane per sample.
+  sampletime: 60
+
+
+# ─── grid: box discretisation ───────────────────────────────────────────────
+# All six keys [required]. Spacing is derived: dx = xsize/itot, etc.
+# COST scales as itot*jtot*ktot AND as 1/dx (finer dx -> smaller CFL timestep),
+# so halving dx is roughly 16x the work in 3-D.
+#
+# CHOOSING RESOLUTION
+#   dx must resolve the eddies carrying the flux: dx << boundary-layer depth,
+#   and small enough that the plume spans several cells at your first receptor.
+#   4-20 m is the usual plume-scale range. Anything coarser stops being an LES
+#   in the surface layer.
+# CHOOSING EXTENT
+#   xsize: source placement + downwind fetch you need (plus room before outflow)
+#   ysize: wide enough that the meandering plume never touches the lateral edges
+#   zsize: comfortably above the boundary layer — the buffer/sponge occupies the
+#          top 25%, so keep zsize >= ~1.5x boundary_layer_height_m
+grid:
+  itot: 192          # cells along x (downwind)
+  jtot: 96           # cells along y (crosswind)
+  ktot: 64           # cells along z (vertical)
+  xsize: 3840.0      # m  -> dx = 20 m
+  ysize: 1920.0      # m  -> dy = 20 m
+  zsize: 2048.0      # m  -> dz = 32 m
+
+
+# ─── domain: geographic anchor + wind-aligned frame ─────────────────────────
+domain:
+  # [required] Reference point for the local tangent plane. Use the primary
+  # source: the projection is exact there and degrades over long distances
+  # (equirectangular), which is fine across an LES-sized box.
+  origin_lon: -121.75
+  origin_lat: 39.15
+
+  # [optional] default: 0.0. Compass bearing (deg clockwise from north) that
+  # box +x points toward = the mean wind / downwind direction.
+  #   0 = wind blows toward north, 90 = toward east, 270 = toward west.
+  # Set this to the real wind direction when matching a met dataset; otherwise
+  # receptors placed on an assumed axis will miss the plume entirely.
+  x_bearing_deg: 68.0
+
+  # [optional] defaults: 0.15*xsize, 0.5*ysize.
+  # Where the origin point sits inside the box, in metres. The defaults put the
+  # source near the upwind edge and centred crosswind, maximising downwind fetch.
+  source_x0: 576.0
+  source_y0: 960.0
+
+
+# ─── forcing: idealised dry convective boundary layer ───────────────────────
+# Entire block [optional] — every key has a default. This describes a *steady,
+# horizontally uniform* ABL: MicroHH is driven by a single mean wind plus a
+# surface heat flux, not by a 3-D met field. To match a real day, derive these
+# numbers from ERA5 at the source column (see microhh_sacramento_era5.yaml).
+#
+# NOTE ON MATCHING REANALYSIS: this reduction is lossy. A Lagrangian model like
+# FLEXPART ingests the full sheared 3-D wind, whereas the LES gets one vector —
+# so "same met" never means "identical transport".
+forcing:
+  u_geo: 3.0        # [opt] default 3.0.  Mean wind along +x (m/s). The single
+                    #       biggest control on downwind dilution (C ~ 1/U).
+  v_geo: 0.0        # [opt] default 0.0.  Crosswind component (m/s). Keep 0 so
+                    #       +x stays the true plume axis; use x_bearing_deg to
+                    #       rotate instead.
+
+  z0m: 0.1          # [opt] default 0.1.   Momentum roughness length (m).
+                    #       ~0.03 grass, ~0.1 crops, ~0.5-1 suburban.
+  z0h: 0.01         # [opt] default 0.01.  Scalar roughness length (m),
+                    #       conventionally ~z0m/10.
+
+  thl_surface_K: 300.0            # [opt] default 300.0. Mixed-layer potential
+                                  #       temperature (K), not absolute T.
+  thl_lapse_K_per_m: 0.003        # [opt] default 0.003. Free-troposphere
+                                  #       stability above the inversion (K/m).
+  boundary_layer_height_m: 1000.0 # [opt] default 1000.0. Initial mixed-layer
+                                  #       depth (m). Must sit well below zsize.
+  inversion_strength_K: 2.0       # [opt] default 2.0.  Capping inversion jump
+                                  #       (K). Larger = stronger lid, less
+                                  #       venting of the plume aloft.
+  inversion_depth_m: 100.0        # [opt] default 100.0. Inversion thickness (m).
+
+  surface_heat_flux_K_m_s: 0.1    # [opt] default 0.1. Kinematic sensible heat
+                                  #       flux w'th' (K m/s), written as sbot[th].
+                                  #       THIS is what drives convection:
+                                  #         > 0  unstable/convective (daytime)
+                                  #         = 0  neutral, shear-driven only
+                                  #       ~0.1 K m/s is a vigorous afternoon.
+                                  #       Convert from W/m2: wth = H/(rho*cp)
+                                  #       ~ H/1200.
+
+
+# ─── species: the transported scalar ────────────────────────────────────────
+species:
+  # [optional] default: "ch4". Name of the passive scalar. Used verbatim as the
+  # MicroHH variable name, so it appears in the .ini, the init NetCDF and every
+  # output file. Passive means: advected and diffused, but exerts NO buoyancy —
+  # which is what makes concentration exactly linear in emission rate.
+  name: ch4
+
+  # [optional] default: 1.0. Multiplier applied to every source's
+  # emission_rate_kg_s when writing MicroHH's `strength`.
+  #   1.0  -> physically calibrated run; output is real kg/kg for the stated Q.
+  #   other -> unit-response run for building a Jacobian.
+  # Because the scalar is exactly linear, results rescale exactly; there is
+  # rarely a reason to use anything but 1.0.
+  emission_scale: 1.0
+
+
+# ─── sources: emissions ─────────────────────────────────────────────────────
+# A list; each entry becomes one Gaussian blob in MicroHH's [source] block.
+# Multiple sources are allowed (they share the single scalar).
+#
+# UNITS — the important part. With swvmr=false (what the writer emits),
+# `strength` is the PHYSICAL emission rate in kg/s: MicroHH normalises the blob
+# so the volume integral of rho * dc/dt equals strength exactly, independent of
+# blob shape or grid (src/source.cxx, calc_norm). No hand calibration needed.
+sources:
+  - id: reference_point               # [required] label for provenance
+    lon: -121.75                      # [required]
+    lat: 39.15                        # [required]
+    emission_rate_kg_s: 2.7777778e-2  # [required] kg/s. 100 kg/hr = 2.778e-2.
+                                      #   1 t/yr ~ 3.17e-5 kg/s.
+    alt_m: 20.0                       # [opt] default 5.0. Release height (m).
+                                      #   Should be >= ~1 cell (dz) or the blob
+                                      #   is clipped by the surface.
+    # Blob half-widths (m) — the source is finite, not a true point. Keep them
+    # >= ~1 grid cell so the emission is representable; too small and the
+    # normalisation concentrates mass into one cell and creates a numerical
+    # hotspot. sigma ~ dx is a safe default.
+    sigma_x_m: 25.0                   # [opt] default 15.0
+    sigma_y_m: 25.0                   # [opt] default 15.0
+    sigma_z_m: 25.0                   # [opt] default 5.0
+
+
+# ─── instruments: point receptors ───────────────────────────────────────────
+# A list; each becomes one MicroHH [column] sample point, giving a full
+# vertical profile vs. time at that location — the receptor time series the
+# instrument operator consumes.
+#
+# The key `receptors:` is accepted as an alias.
+#
+# PLACEMENT: coordinates are snapped to the nearest grid column, so receptors
+# closer together than dx collapse onto the same column. Receptors must be
+# downwind (per x_bearing_deg) to see anything.
+instruments:
+  - id: rec_axis          # [required]
+    lon: -121.74460       # [required]
+    lat: 39.15170         # [required]
+    alt_m: 20.0           # [opt] default 10.0. Advisory only — the column
+                          #   stores all levels; the sampling level is chosen
+                          #   when reading (read_receptor_series(sample_level=)).
+
+
+# ─── output ─────────────────────────────────────────────────────────────────
+output:
+  # [optional] default: runs/microhh/<name>/<name>.column.nc
+  # NOMINAL path recorded in the run result. It does NOT rename MicroHH's
+  # output: MicroHH writes per-column NetCDFs as
+  #   <case_name>.column.<ix>.<iy>.<iter>.nc
+  # and raw binary cross-sections as <var>.xy|xz.<n>.<idx>.<iter>
+  # inside case_dir. Use enforceflux.microhh.output helpers to read them.
+  path: ../runs/microhh_reference/reference_case.column.nc
+
+
+# ─── extra_ini: raw namelist passthrough (escape hatch) ─────────────────────
+# [optional] default: {}. Mapping of section -> {key: value}, appended verbatim
+# to the generated .ini. Use for MicroHH features this schema does not model
+# yet. Sections are APPENDED, so keys here are not merged into the generated
+# blocks above — MicroHH takes the last occurrence, and a duplicated section
+# can shadow generated settings. Verify with `microhh init <case>` before
+# trusting a passthrough.
+#
+# extra_ini:
+#   radiation:
+#     swradiation: 0
+#   buffer:
+#     swbuffer: 1
