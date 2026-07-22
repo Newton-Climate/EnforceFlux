@@ -1,0 +1,276 @@
+# ============================================================================
+# One config, any transport model — apps/transport_main.py
+# ============================================================================
+#   python apps/transport_main.py --config apps/transport_main.yaml
+#   python apps/transport_main.py --config apps/transport_main.yaml --model flexpart
+#   python apps/transport_main.py --config apps/transport_main.yaml --mode operator
+#   python apps/transport_main.py --config apps/transport_main.yaml --dry-run
+#
+# CLI overrides: --model, --mode, --output. --dry-run writes each model's input
+# files without executing it (the only path when a Fortran binary is not built).
+#
+# ── THE CONTRACT ────────────────────────────────────────────────────────────
+# Everything above the model blocks is SHARED and authoritative: switching
+# `transport.model` runs the identical scenario through a different model. The
+# per-model blocks carry only what has no counterpart elsewhere — a compiled
+# binary, a particle count, an LES box.
+#
+# A model block MAY NOT restate a shared key. The loader raises on any of:
+#   transport, domain, met, sources, receptors, output
+# so sources and meteorology cannot silently diverge between models.
+#
+# ── CONVENTIONS ─────────────────────────────────────────────────────────────
+#   [required] loader raises if absent        [optional] default in comment
+#   Relative paths resolve against THIS FILE's directory, not the cwd.
+#
+#   GEOMETRY IS A CONTRACT: domain.origin_lon/origin_lat are the ONLY
+#   geographic coordinates in this file. The domain extent, every source and
+#   every receptor are Cartesian metres east/north of that origin. Declaring
+#   lon/lat anywhere else — including domain bounds, a source, a receptor, or
+#   met.era5 — is rejected by the loader.
+#
+#   The lon/lat bounds FLEXPART needs are DERIVED from the origin plus the
+#   extent, never declared, so a config cannot carry two descriptions of the
+#   same box that disagree. AERMOD and MicroHH are dimensional and consume the
+#   metres directly; only the FLEXPART path pays a projection on the way out.
+#   Simulation output is always canonical concentration(time, y, x) in ng m-3,
+#   whichever model produced it.
+# ============================================================================
+
+
+# ─── transport: which model, and what kind of answer ────────────────────────
+transport:
+  # [required] aermod | flexpart | microhh
+  #   aermod   — steady-state Gaussian plume. Seconds. Flat terrain, one wind
+  #              per hour; no meander, no resolved turbulence.
+  #   flexpart — Lagrangian particles on ERA5 (~28 km) met. Minutes. Right tool
+  #              from ~1 km out; near-field spread is parameterised, and below
+  #              roughly the met/output cell size it is not meaningful.
+  #   microhh  — turbulence-resolving LES. Tens of minutes to hours. The only
+  #              model here that resolves plume meander and convective lofting;
+  #              use it for near-field truth, not for wide domains.
+  model: aermod
+
+  # [optional] default: simulation
+  #   simulation — forward run -> canonical concentration field NetCDF.
+  #   operator   — observation x source Jacobian for inversion. REQUIRES
+  #                `receptors:` (the loader raises without them).
+  mode: simulation
+
+  # [optional] both. ISO-8601, assumed UTC if no offset. Bounds the met window
+  # and the run period. Omit to let the met source define its own extent.
+  start: "2020-03-31T00:00:00"
+  end:   "2020-04-01T00:00:00"
+
+
+# ─── met: meteorology, read once and adapted per model ──────────────────────
+# Give EITHER `era5:` (read from GRIB) OR `records:` (inline). era5 wins if
+# both are present. Each model consumes the same canonical MetSeries, so all
+# three see the same weather.
+met:
+  era5:
+    # [required] Directory of ERA5 GRIB files (the same set FLEXPART uses).
+    meteo_dir: ../runs/sacramento_valley_2020/meteo_april_week
+    # The single-point profile is taken at domain.origin_lon/origin_lat.
+    # Declaring longitude/latitude here is a contract violation and is rejected.
+
+    # [optional] default 0.1 — surface roughness (m). ~0.03 grass, ~0.15
+    # cropland, ~0.5-1 suburban. Sets the log-law shear and hence u*.
+    surface_roughness_m: 0.15
+
+    # [optional] default log_law
+    #   log_law — u* from local wind shear and roughness. Preferred: consistent
+    #             with the surface you declared above.
+    #   stress  — u* from ERA5's surface stress, which INCLUDES orographic drag
+    #             and so overstates near-surface turbulence in flat terrain.
+    friction_velocity: log_law
+
+    # Further [optional] knobs, defaults shown:
+    #   potential_temperature_gradient_k_m: 0.01   # stable-layer lapse rate
+    #   min_mixing_height_m: 50.0                  # floor on shallow night BLs
+    #   min_wind_speed_m_s: 0.3                    # floor; calm breaks 1/U algebra
+    #   pattern: "EA*"                             # GRIB filename glob
+
+  # Alternative to era5 — inline canonical records (idealised or matched runs).
+  # Only wind_speed_m_s and wind_direction_deg are [required]; the rest default.
+  # wind_direction_deg is METEOROLOGICAL: the direction the wind comes FROM.
+  # records:
+  #   - time: "2020-03-31T12:00"        # [opt] defaults to transport.start
+  #     wind_speed_m_s: 3.0             # [required]
+  #     wind_direction_deg: 270.0       # [required] 270 = westerly (from west)
+  #     temperature_k: 293.15           # [opt] 293.15
+  #     mixing_height_m: 800.0          # [opt] 800.0
+  #     friction_velocity_m_s: 0.3      # [opt] 0.3
+  #     sensible_heat_flux_w_m2: 120.0  # [opt] 0.0  >0 convective, 0 neutral
+  #     surface_roughness_m: 0.1        # [opt] 0.1
+  #     surface_pressure_pa: 100000.0   # [opt] 100000.0
+
+
+# ─── domain: the one geographic anchor, then Cartesian metres ───────────────
+domain:
+  # [required] THE ONLY lon/lat in this file. Everything below — and every
+  # source and receptor — is metres east/north of this point.
+  origin_lon: -121.75
+  origin_lat: 39.15
+
+  # [required] Extent in metres relative to the origin; max must exceed min.
+  # The origin need not be centred: an asymmetric box (more fetch downwind) is
+  # often what you want. The equivalent lon/lat bounds are computed from these
+  # for FLEXPART — do NOT declare them, the loader rejects that.
+  x_min: -4300.0     # ~0.05 deg west of origin
+  x_max:  4300.0
+  y_min: -4450.0     # ~0.04 deg south of origin
+  y_max:  4450.0
+
+  # [optional] default 500.0. Canonical output resolution (m), converted to
+  # degrees for the lon/lat-gridded models. This is the grid every model is
+  # regridded onto, so it sets what the comparison can resolve: a plume
+  # narrower than one cell is not represented, whichever model produced it.
+  spacing_m: 100.0
+
+  # [optional] default 2.0. Height (m) at which receptor concentrations are
+  # evaluated — sampling height, distinct from each receptor's own alt_m.
+  receptor_height_m: 2.0
+
+  # [optional] default [100.0]. FLEXPART output level tops (m AGL). The first
+  # entry is the surface layer that height_index=0 samples, so a thick first
+  # layer dilutes a shallow plume over its full depth.
+  heights_m: [100.0]
+
+
+# ─── sources: emissions (shared by every model) ─────────────────────────────
+# At least one is [required]. id/x_m/y_m are [required] per entry.
+# Positions are metres east/north of domain.origin — lon/lat is rejected.
+sources:
+  - id: leak
+    x_m: 0.0                            # at the origin
+    y_m: 0.0
+    alt_m: 5.0                          # [opt] 0.0 — release height (m AGL)
+    emission_rate_kg_s: 2.7777778e-2    # [opt] 0.0 — 100 kg/hr. Physical kg/s.
+
+    # Inversion priors — used in `mode: operator` only, ignored otherwise.
+    prior_mean_kg_s: 1.4e-2             # [opt] none — prior expectation
+    prior_std_kg_s: 1.4e-2              # [opt] none — prior 1-sigma. Here it
+                                        #   equals the mean, i.e. a deliberately
+                                        #   uninformative ~100% prior.
+
+
+# ─── receptors: measurement locations ───────────────────────────────────────
+# [optional] for mode: simulation; REQUIRED for mode: operator (they are the
+# Jacobian's rows). id/x_m/y_m [required] per entry, in metres from the origin.
+# For a path-averaged (open-path) instrument set path_length_m > 0 and give a
+# bearing; leave both 0 for a point sensor.
+receptors:
+  - {id: tower_n, x_m:    0.0, y_m:  650.0, alt_m: 3.0}  # 650 m north
+  - {id: tower_e, x_m:  600.0, y_m:    0.0, alt_m: 3.0}  # 600 m east
+  - {id: tower_s, x_m:    0.0, y_m: -650.0, alt_m: 3.0}  # 650 m south
+  # alt_m [opt] 0.0 | path_length_m [opt] 0.0 | path_bearing_deg [opt] 0.0
+
+
+# ─── output ─────────────────────────────────────────────────────────────────
+output:
+  # [required] Canonical NetCDF: concentration(time, y, x) in ng m-3.
+  path: ../runs/transport_main/transport_main.nc
+  compress: true      # [opt] true — zlib-compress the canonical NetCDF
+  keep_native: true   # [opt] true — also retain each model's raw output
+                      #   (FLEXPART grid, MicroHH columns/cross-sections).
+                      #   Keep on while validating; off to save disk.
+
+
+# ============================================================================
+# Model-specific settings. Only the block matching transport.model is read, so
+# all three can coexist. None may restate a shared key (see THE CONTRACT).
+# ============================================================================
+
+aermod:
+  # [opt] default "stack". How hourly results become observation rows:
+  #   stack — one row per (hour, receptor); keeps the time series.
+  #   mean  — one period-mean row per receptor; smaller Jacobian, no diurnal signal.
+  reduce: stack
+
+  # [opt] default {}. Stack (release) parameters applied to every source that
+  # has no entry in `stacks:`. AERMOD is a stack model, so plume rise comes
+  # from these; height_m here is the release height it actually uses.
+  default_stack:
+    height_m: 5.0
+    # Further stack parameters (diameter_m, velocity_m_s, temperature_k) may be
+    # given for buoyant plume rise; omitted here for a cold ground-level leak.
+
+  # [opt] default {}. Per-source overrides of default_stack, keyed by source id:
+  # stacks:
+  #   leak: {height_m: 12.0}
+
+  # [opt] default 1. Samples along an open-path receptor. 1 = treat as a point;
+  # raise it only for receptors with path_length_m > 0.
+  receptor_path_samples: 1
+
+flexpart:
+  # [required] Compiled binary and the options template directory.
+  executable: ../flexpart/src/FLEXPART
+  options_dir: ../flexpart/options
+
+  n_particles: 100000        # [opt] 100000 — per source. Statistical noise
+                             #   falls as 1/sqrt(N); raise for fine grids, but
+                             #   note no particle count fixes a too-coarse met field.
+  species_number: 24         # [opt] 24 — SPECNUM_REL; must match options/SPECIES/SPECIES_0XX
+  # species_name: CH4        # [opt] "CH4"
+  output_step_seconds: 3600  # [opt] 3600 — output averaging interval (s)
+  sync_seconds: 900          # [opt] 900 — internal synchronisation step (s);
+                             #   must divide output_step_seconds
+  # nxshift: -9999           # [opt] -9999 = auto-detect (359 ECMWF, 0 GFS).
+                             #   Set 0 for regional/test grids.
+  # dx, dy:                  # [opt] default = domain.spacing_m in degrees.
+                             #   Override only to decouple the FLEXPART output
+                             #   grid from the canonical one.
+  # per_source: false        # [opt] false — IOUTPUTFOREACHRELEASE, one grid per release
+  # variable: ch4_mixing_ratio  # [opt] output variable to canonicalise
+  # height_index: 0          # [opt] 0 — which domain.heights_m level to sample
+
+microhh:
+  # [required] Compiled binary (`make install-microhh`).
+  executable: ../microhh/build/microhh
+
+  # [opt] default 1; set to 4 here. MPI ranks. >1 requires the MPI build
+  # (`make install-microhh`, which is MPI by default) and mpirun on PATH; the
+  # runner launches init and run under it. Decomposed into (npx,npy) against
+  # the grid below — npx divides itot AND ktot, npy divides jtot — so an
+  # invalid count is rejected when the case loads. For the grid here
+  # 1/2/4/6/8/16/32/64 work; 4 gives a 2x2 decomposition.
+  # Drop to 1 if you built serially (`make install-microhh MICROHH_MPI=0`).
+  num_workers: 4
+
+  # [opt] LES box. Cost scales as itot*jtot*ktot AND as 1/dx through the CFL
+  # timestep, so halving spacing is roughly 16x the work. Keep zsize well above
+  # the mixing height — the sponge occupies the top ~25%.
+  grid: {itot: 192, jtot: 96, ktot: 64, xsize: 3840.0, ysize: 1920.0, zsize: 2048.0}
+
+  spinup_seconds: 1800   # [opt] 1800 — grow turbulence before sampling; the
+                         #   initial field is smooth and its statistics are not
+                         #   yet physical.
+  runtime_seconds: 3600  # [opt] 3600 — sampling period after spin-up
+  sampletime: 60         # [opt] 60 — output cadence (s) for stats/cross/column
+
+  # [opt] default "daytime_mean". How a whole met series collapses to the ONE
+  # steady wind + heat flux an LES box takes. This reduction is inherently
+  # lossy: FLEXPART ingests the full sheared 3-D wind, the LES gets one vector,
+  # so "same met" never means identical transport.
+  met_reduce: daytime_mean
+
+  # [opt] default 0.6. Reject the reduction if wind directions over the window
+  # are less consistent than this (0-1). Guards against averaging a veering
+  # wind into a mean direction that never occurred.
+  # min_directional_consistency: 0.6
+
+  # [opt] default = bearing implied by the reduced met. Box +x points TOWARD
+  # this compass bearing (deg cw from north) = downwind. Override only to pin
+  # the axis; a wrong value puts receptors off the plume entirely.
+  # x_bearing_deg: 68.0
+
+  # [opt] source blob half-width (m); default 25.0. Keep near the grid spacing —
+  # much smaller and the emission becomes a numerical hotspot.
+  # source_sigma_m: 25.0
+
+  # case_name: transport_run  # [opt] "transport_run" — basename of case files
+  # scalar_name: ch4          # [opt] "ch4"
+  # emission_scale: 1.0       # [opt] 1.0 = physically calibrated (strength = kg/s)
+  # level_index: 0            # [opt] 0 — vertical level sampled when canonicalising
