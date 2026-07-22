@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import glob
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,7 +50,10 @@ class MicroHHRunner:
         by :meth:`prepare` (``<case>.ini`` and ``<case>_input.nc``).
         """
         cfg = self.config
-        keep = {f"{cfg.case_name}.ini", f"{cfg.case_name}_input.nc"}
+        # The 2-D surface-flux BC is an INPUT written by prepare(), not run
+        # output — deleting it would make `init` fail on the next run.
+        keep = {f"{cfg.case_name}.ini", f"{cfg.case_name}_input.nc",
+                f"{cfg.scalar_name}_bot_in.0000000"}
         d = cfg.case_dir
         patterns = (
             "grid.*", "fftwplan.*", "time.*", "*.restart", "*.xy.*", "*.xz.*",
@@ -75,6 +79,8 @@ class MicroHHRunner:
             "grid": (cfg.grid.itot, cfg.grid.jtot, cfg.grid.ktot),
             "n_cells": cfg.grid.itot * cfg.grid.jtot * cfg.grid.ktot,
             "dx_m": cfg.grid.dx,
+            "num_workers": cfg.num_workers,
+            "decomposition": cfg.decomposition,   # (npx, npy)
         }
 
         if dry_run:
@@ -101,6 +107,27 @@ class MicroHHRunner:
             output_path=cfg.output_path, executed=True, meta=meta,
         )
 
+    def _launcher(self) -> list[str]:
+        """MPI launcher prefix, empty for a serial run.
+
+        Both ``init`` and ``run`` must use the same rank count: ``init`` writes
+        the decomposed restart files that ``run`` reads back.
+        """
+        n = self.config.num_workers
+        if n <= 1:
+            return []
+        exe = shutil.which("mpirun") or shutil.which("mpiexec")
+        if exe is None:
+            raise RuntimeError(
+                f"num_workers={n} needs an MPI launcher, but neither mpirun nor "
+                "mpiexec is on PATH. Install one (brew install open-mpi) and "
+                "rebuild MicroHH (the default build is MPI):\n"
+                "    make install-microhh\n"
+                "or set num_workers: 1 to run serially. Note MicroHH cannot "
+                "combine MPI with CUDA."
+            )
+        return [exe, "-n", str(n)]
+
     def _invoke(self, args: list[str]) -> None:
-        cmd = [str(self.config.executable), *args]
+        cmd = [*self._launcher(), str(self.config.executable), *args]
         subprocess.run(cmd, cwd=str(self.config.case_dir), check=True)

@@ -16,6 +16,38 @@ from enforceflux.microhh.sources import MicroHHPointSource, MicroHHReceptor
 
 
 @dataclass(frozen=True)
+class SurfaceFluxPatch:
+    """A square area source realised as a 2-D surface-flux boundary condition.
+
+    This is the physically right representation of a field-scale surface
+    emitter (a rice paddy, a landfill cap, a wetland). The alternative this
+    codebase started with — tiling the area with volumetric Gaussian blobs —
+    injects the emission through a layer as deep as the blob's sigma_z, which
+    destroys the near-surface vertical gradient that a low-mounted instrument
+    actually measures.
+
+    The square is axis-aligned in GEOGRAPHIC metres (east/north of the domain
+    origin), so in the wind-aligned LES box it appears rotated. Rasterising
+    handles that; do not pre-rotate it.
+    """
+
+    id: str
+    lon: float
+    lat: float
+    side_m: float
+    emission_rate_kg_s: float
+
+    @property
+    def area_m2(self) -> float:
+        return self.side_m * self.side_m
+
+    @property
+    def flux_kg_m2_s(self) -> float:
+        """Uniform surface flux over the patch."""
+        return self.emission_rate_kg_s / self.area_m2
+
+
+@dataclass(frozen=True)
 class BoxGrid:
     """MicroHH ``[grid]`` block: cell counts and physical extents (m)."""
 
@@ -25,6 +57,16 @@ class BoxGrid:
     xsize: float
     ysize: float
     zsize: float
+    # Optional near-surface vertical stretching. With both set, the first cell
+    # is `dz_surface_m` thick and cells grow geometrically until they reach
+    # `dz_max_m`, then stay uniform. Leave unset for a uniform grid.
+    #
+    # This exists because a uniform grid that spans a 2 km boundary layer in ~64
+    # levels puts its first scalar level ~16 m up — far above the 0.5-3 m where
+    # open-path beams and EC towers actually sit, and the surface-layer profile
+    # is logarithmic, so that height difference is worth tens of ppb.
+    dz_surface_m: float | None = None
+    dz_max_m: float | None = None
 
     @property
     def dx(self) -> float:
@@ -36,7 +78,117 @@ class BoxGrid:
 
     @property
     def dz(self) -> float:
+        """Uniform layer thickness. Only meaningful when not stretched."""
         return self.zsize / self.ktot
+
+    @property
+    def stretched(self) -> bool:
+        return self.dz_surface_m is not None and self.dz_max_m is not None
+
+    def levels(self):
+        """Full-level heights ``z`` (m), uniform or stretched.
+
+        MicroHH reads these from ``<case>_input.nc`` and derives the staggered
+        levels as midpoints (``swspatialorder=2``), so any monotonic profile is
+        admissible provided the top full level stays below ``zsize``.
+        """
+        import numpy as np
+
+        if not self.stretched:
+            return np.arange(0.5 * self.dz, self.zsize, self.dz)
+
+        dz0, dz_max = float(self.dz_surface_m), float(self.dz_max_m)
+        if dz0 <= 0 or dz_max < dz0:
+            raise ValueError(
+                f"Need 0 < dz_surface_m ({dz0}) <= dz_max_m ({dz_max})."
+            )
+
+        def thicknesses(ratio: float):
+            dz, out = dz0, []
+            for _ in range(self.ktot):
+                out.append(dz)
+                dz = min(dz * ratio, dz_max)
+            return np.asarray(out)
+
+        # Bisect the growth ratio so the layers exactly fill zsize.
+        lo, hi = 1.0, 1.5
+        if thicknesses(hi).sum() < self.zsize:
+            raise ValueError(
+                f"ktot={self.ktot} cannot span zsize={self.zsize} m from "
+                f"dz_surface_m={dz0} m even at a 1.5x growth ratio. Raise ktot, "
+                "raise dz_max_m, or lower zsize."
+            )
+        if thicknesses(lo).sum() > self.zsize:
+            raise ValueError(
+                f"ktot={self.ktot} uniform layers of dz_surface_m={dz0} m "
+                f"already exceed zsize={self.zsize} m. Lower ktot or dz_surface_m."
+            )
+        for _ in range(200):
+            mid = 0.5 * (lo + hi)
+            if thicknesses(mid).sum() < self.zsize:
+                lo = mid
+            else:
+                hi = mid
+        dz = thicknesses(0.5 * (lo + hi))
+        # Full levels sit at layer centres: z_k = sum(dz[:k]) + dz[k]/2.
+        return np.cumsum(dz) - 0.5 * dz
+
+    @property
+    def growth_ratio(self) -> float:
+        """Cell-to-cell growth ratio near the surface (1.0 when uniform)."""
+        z = self.levels()
+        if not self.stretched or z.size < 3:
+            return 1.0
+        return float((z[2] - z[1]) / (z[1] - z[0]))
+
+
+def decompose_workers(num_workers: int, grid: BoxGrid) -> tuple[int, int]:
+    """Split ``num_workers`` MPI ranks into a ``(npx, npy)`` decomposition.
+
+    MicroHH decomposes x **and z** by ``npx`` and y by ``npy``, and its
+    transposes impose (``src/grid.cxx``)::
+
+        itot % npx == 0        itot % npy == 0
+        jtot % npy == 0        jtot % npx == 0   (only when npy > 1)
+        ktot % npx == 0
+
+    The ``ktot % npx`` rule is the one that usually bites: a vertical extent
+    that is not a multiple of npx fails even when the horizontal grid divides
+    cleanly. Among the valid splits the most balanced is chosen, which
+    minimises the halo-exchange surface.
+
+    Raises with the grid and the rules when no valid split exists.
+    """
+    if num_workers < 1:
+        raise ValueError(f"num_workers must be >= 1, got {num_workers}")
+    if num_workers == 1:
+        return (1, 1)
+
+    candidates: list[tuple[int, int, int]] = []
+    for npx in range(1, num_workers + 1):
+        if num_workers % npx:
+            continue
+        npy = num_workers // npx
+        if grid.itot % npx or grid.itot % npy:
+            continue
+        if grid.jtot % npy:
+            continue
+        if npy > 1 and grid.jtot % npx:
+            continue
+        if grid.ktot % npx:
+            continue
+        candidates.append((abs(npx - npy), npx, npy))
+
+    if not candidates:
+        raise ValueError(
+            f"num_workers={num_workers} cannot be decomposed for grid "
+            f"itot={grid.itot}, jtot={grid.jtot}, ktot={grid.ktot}. MicroHH needs "
+            "itot%npx==0, itot%npy==0, jtot%npy==0, ktot%npx==0 (and jtot%npx==0 "
+            "when npy>1), where npx*npy==num_workers. Pick a worker count whose "
+            "factors divide the grid — note ktot must divide by npx."
+        )
+    _, npx, npy = min(candidates)
+    return npx, npy
 
 
 @dataclass(frozen=True)
@@ -100,7 +252,34 @@ class MicroHHConfig:
     # linear so results rescale exactly.
     emission_scale: float = 1.0
 
+    # MPI ranks for the run. 1 = serial (the default build). >1 requires a
+    # MicroHH built with -DUSEMPI=TRUE and an mpirun/mpiexec on PATH; the
+    # runner launches through it. The rank count is decomposed into (npx, npy)
+    # by :func:`decompose_workers`, which the grid must divide evenly.
+    num_workers: int = 1
+
+    # Cross-section planes, in box coordinates: ``cross_xy_m`` is a height and
+    # ``cross_xz_m`` a box-y. Both default to the FIRST source's height and y,
+    # which means adding or reordering sources silently moves the slice — set
+    # them explicitly whenever two runs' cross-sections must be comparable.
+    cross_xy_m: float | None = None
+    cross_xz_m: float | None = None
+
+    # Area sources applied as a 2-D bottom boundary condition rather than as
+    # volumetric blobs. Both may be used together: a point leak stays a blob,
+    # a field becomes a surface flux.
+    surface_flux_patches: tuple[SurfaceFluxPatch, ...] = ()
+
     extra_ini: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Fail at load time, not four minutes into a run.
+        decompose_workers(self.num_workers, self.grid)
+
+    @property
+    def decomposition(self) -> tuple[int, int]:
+        """``(npx, npy)`` MPI decomposition for this run."""
+        return decompose_workers(self.num_workers, self.grid)
 
 
 # ─── YAML loader ─────────────────────────────────────────────────────────────
@@ -136,6 +315,8 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
     grid = BoxGrid(
         itot=int(g["itot"]), jtot=int(g["jtot"]), ktot=int(g["ktot"]),
         xsize=float(g["xsize"]), ysize=float(g["ysize"]), zsize=float(g["zsize"]),
+        dz_surface_m=(float(g["dz_surface_m"]) if "dz_surface_m" in g else None),
+        dz_max_m=(float(g["dz_max_m"]) if "dz_max_m" in g else None),
     )
 
     forcing = Forcing(
@@ -178,6 +359,7 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
     ]
 
     case_name = str(sim.get("name", "case"))
+    cross = data.get("cross", {}) or {}
 
     return MicroHHConfig(
         executable=_p(mh["executable"]),
@@ -200,5 +382,16 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
         sampletime_s=int(sim.get("sampletime", 10)),
         scalar_name=str(spec.get("name", "ch4")),
         emission_scale=float(spec.get("emission_scale", 1.0)),
+        num_workers=int(mh.get("num_workers", 1)),
+        cross_xy_m=(float(cross["xy_m"]) if "xy_m" in cross else None),
+        cross_xz_m=(float(cross["xz_m"]) if "xz_m" in cross else None),
+        surface_flux_patches=tuple(
+            SurfaceFluxPatch(
+                id=str(p["id"]), lon=float(p["lon"]), lat=float(p["lat"]),
+                side_m=float(p["side_m"]),
+                emission_rate_kg_s=float(p["emission_rate_kg_s"]),
+            )
+            for p in (data.get("surface_flux_patches") or [])
+        ),
         extra_ini=dict(data.get("extra_ini", {})),
     )

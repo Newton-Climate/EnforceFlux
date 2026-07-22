@@ -23,6 +23,7 @@ from enforceflux.microhh.output import (
 from enforceflux.microhh.runner import MicroHHRunner, MicroHHRunResult
 from enforceflux.microhh.sim_config import (
     BoxGrid,
+    decompose_workers,
     Forcing,
     MicroHHConfig,
     load_microhh_config,
@@ -45,6 +46,7 @@ __all__ = [
     "MicroHHRunResult",
     "ReceptorSeries",
     "build_ini",
+    "decompose_workers",
     "gaussian_plume_ground_conc",
     "initial_profiles",
     "mixing_ratio_to_mass_conc",
