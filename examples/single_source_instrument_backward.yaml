@@ -1,0 +1,85 @@
+# Backward-mode FLEXPART config for single-source instrument OSSE.
+#
+# In backward mode the "sources" are receptor (sensor) locations.  FLEXPART
+# releases particles backward in time from each sensor and computes the surface
+# footprint (sensitivity) of each sensor across the domain grid.
+#
+# Time convention for backward mode:
+#   simulation.start  → IBDATE/IBTIME (the EARLIER date — tracking limit)
+#   simulation.end    → IEDATE/IETIME (the LATER date  — observation time)
+#   LDIRECT=-1 is set programmatically; FLEXPART still needs IBDATE < IEDATE.
+#   Particles are released at sensor locations over [start, end] and tracked
+#   backward, accumulating the surface footprint (sensitivity field).
+#
+# Run via examples/single_source_instrument_demo.py
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_july/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_july/
+  run_dir:       ../runs/single_source_instrument/backward_run/
+
+simulation:
+  # Normal ordering: start=earlier, end=later.  LDIRECT=-1 added in script.
+  start: "2020-07-01T00:00:00"
+  end:   "2020-07-02T00:00:00"
+  output_step_seconds: 10800   # 3-hour output, matches ERA5 resolution
+  sync_seconds: 3600
+  nxshift: 0
+
+domain:
+  # Same sub-domain as the forward Gaussian plume run
+  lon_min: -121.98
+  lat_min:  39.02
+  lon_max: -121.52
+  lat_max:  39.48
+  dx: 0.025
+  dy: 0.025
+  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24
+
+# Sensor locations — treated as "receptors" in backward mode.
+# emission_rate_kg_s = 1.0 is a unit-mass normalisation; the actual footprint
+# value is independent of this choice after normalisation.
+# source start/end bracket the 24-hour observation window (forward ordering).
+# July 1-2, 2020 ERA5 winds are from SE, blowing the plume NW and N.
+# Sensors are placed in the actual downwind corridor (NW/N of source).
+sources:
+  - type: point
+    id: OP_crossplume
+    lon: -121.87
+    lat:  39.28
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 500000
+    start: "2020-07-01T00:00:00"
+    end:   "2020-07-02T00:00:00"
+
+  - type: point
+    id: point_west
+    lon: -121.95
+    lat:  39.21
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 500000
+    start: "2020-07-01T00:00:00"
+    end:   "2020-07-02T00:00:00"
+
+  - type: point
+    id: point_north
+    lon: -121.75
+    lat:  39.40
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 500000
+    start: "2020-07-01T00:00:00"
+    end:   "2020-07-02T00:00:00"
+
+output:
+  path: ../runs/single_source_instrument/backward_footprints.nc
+  compress: true
+  per_source: true   # separate footprint grid for each sensor (pointspec index)

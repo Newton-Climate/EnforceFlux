@@ -1,0 +1,74 @@
+# Backward-mode FLEXPART config for single-source instrument OSSE — April 2020.
+#
+# April 2020 ERA5 winds are westerly (from W), sending the plume eastward.
+# Sensors are placed on the downwind (east) side of the source so that
+# backward trajectories trace back to the source.
+#
+# Run via examples/single_source_instrument_demo.py
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_april/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_april/
+  run_dir:       ../runs/single_source_instrument/backward_run_april/
+
+simulation:
+  start: "2020-04-01T00:00:00"
+  end:   "2020-04-02T00:00:00"
+  output_step_seconds: 10800
+  sync_seconds: 3600
+  nxshift: 0
+
+domain:
+  lon_min: -121.98
+  lat_min:  39.02
+  lon_max: -121.52
+  lat_max:  39.48
+  dx: 0.025
+  dy: 0.025
+  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24
+
+# April westerly winds → plume goes east.  Sensors are east of the source.
+#   OP_crossplume : open-path beam running N-S (bearing 0°) crossing the E-bound plume
+#   point_ESE     : point sensor ESE of source in the ESE plume arm
+#   point_E       : point sensor directly east of source on the plume centreline
+sources:
+  - type: point
+    id: OP_crossplume
+    lon: -121.62
+    lat:  39.15
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-01T00:00:00"
+    end:   "2020-04-02T00:00:00"
+
+  - type: point
+    id: point_ESE
+    lon: -121.60
+    lat:  39.08
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-01T00:00:00"
+    end:   "2020-04-02T00:00:00"
+
+  - type: point
+    id: point_ENE
+    lon: -121.60
+    lat:  39.22
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-01T00:00:00"
+    end:   "2020-04-02T00:00:00"
+
+output:
+  path: ../runs/single_source_instrument/backward_footprints_april.nc
+  compress: true
+  per_source: true

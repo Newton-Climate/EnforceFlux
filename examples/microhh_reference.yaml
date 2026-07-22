@@ -36,6 +36,26 @@ microhh:
   # (MicroHH refuses to overwrite restart files).
   case_dir: ../runs/microhh_reference/
 
+  # [optional] default 1. MPI ranks. 1 = serial, which is what the default
+  # build gives you.
+  #
+  # >1 REQUIRES BOTH:
+  #   - an MPI-enabled MicroHH:  make install-microhh MICROHH_MPI=1
+  #   - an mpirun/mpiexec on PATH (brew install open-mpi)
+  # The runner then launches both `init` and `run` under mpirun with this rank
+  # count (they must match — `init` writes the decomposed restart files that
+  # `run` reads back). MicroHH cannot combine MPI with CUDA.
+  #
+  # The count is split into a (npx, npy) decomposition — npx divides x AND z,
+  # npy divides y — subject to:
+  #     itot % npx == 0    itot % npy == 0
+  #     jtot % npy == 0    jtot % npx == 0  (only when npy > 1)
+  #     ktot % npx == 0    <- the one that usually bites
+  # The most balanced valid split is chosen automatically; an impossible count
+  # is rejected when the config loads, not partway through a run. For the
+  # 192x96x64 grid below, 1/2/4/6/8/16/32/64 all work; 7 does not.
+  num_workers: 1
+
 
 # ─── simulation: identity and timing (all seconds) ──────────────────────────
 simulation:

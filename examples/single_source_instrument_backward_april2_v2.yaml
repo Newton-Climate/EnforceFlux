@@ -1,0 +1,96 @@
+# Backward-mode FLEXPART config — April 2 2020, corrected sensor geometry.
+#
+# Fix for source-cell footprint = 0:
+#
+#   Problem: sensors placed due south of source but backward wind is NNW
+#   (u_bwd = -1.65 m/s west, v_bwd = +2.74 m/s north, bearing 329°).
+#   Due-south sensors drift 7 km west by the time trajectories reach
+#   source latitude — missing the source cell entirely.
+#
+#   Fix: place sensors at bearing 149° (SSE) from the source, offset
+#   +0.059° east to compensate for the zonal drift:
+#     sensor_SSE_primary : (-121.691, 39.073) — aligned with 329° backward wind
+#     sensor_SSE_offset  : (-121.670, 39.068) — offset slightly further east
+#
+#   Opposite side: place sensor NNW of source to catch signal when winds rotate
+#   (afternoon sea breeze from SW, or inter-day variability).
+#     sensor_NNW : (-121.809, 39.227) — upwind side
+#
+#   Domain expanded to match full meteo bbox so backward trajectories don't
+#   exit the domain before the first 3-hour output step.
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_april_week/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_april_week/
+  run_dir:       ../runs/single_source_instrument/backward_run_april2_v2/
+
+simulation:
+  start: "2020-04-02T00:00:00"
+  end:   "2020-04-03T00:00:00"
+  output_step_seconds: 10800
+  sync_seconds: 3600
+  nxshift: 0
+
+# Expanded to match actual ERA5 grid coverage (0.25° steps → 38.75–39.75 lat,
+# -122.5 to -121.0 lon). Output grid must stay inside the meteo domain.
+# Fine resolution 0.01° (~1 km) so source-cell transit (314 s) registers in
+# a small bin rather than being diluted across a large 5-km cell.
+# 150×100 = 15 000 cells per sensor.
+domain:
+  lon_min: -122.50
+  lat_min:  38.75
+  lon_max: -121.00
+  lat_max:  39.75
+  dx: 0.01
+  dy: 0.01
+  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24
+
+# Sensors form a downwind triangle 3 km from the source.
+# NNW backward wind (u_bwd=-1.80 m/s W, v_bwd=+3.00 m/s N, bearing 329°).
+# Sensor bearing from source = 149° (SSE); each sensor offset ±25° crosswind.
+#
+#   sensor_SSE : bearing 149°, 3 km → (-121.732, 39.127)  on-axis
+#     backward trajectory reaches source at t = 14 min ✓
+#   sensor_ESE : bearing 124°, 3 km → (-121.721, 39.135)  left flank
+#   sensor_SSW : bearing 174°, 3 km → (-121.746, 39.123)  right flank
+sources:
+  - type: point
+    id: sensor_SSE
+    lon: -121.732
+    lat:  39.127
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-02T00:00:00"
+    end:   "2020-04-03T00:00:00"
+
+  - type: point
+    id: sensor_ESE
+    lon: -121.721
+    lat:  39.135
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-02T00:00:00"
+    end:   "2020-04-03T00:00:00"
+
+  - type: point
+    id: sensor_SSW
+    lon: -121.746
+    lat:  39.123
+    alt_m: 2.0
+    emission_rate_kg_s: 1.0
+    n_particles: 50000
+    start: "2020-04-02T00:00:00"
+    end:   "2020-04-03T00:00:00"
+
+output:
+  path: ../runs/single_source_instrument/backward_footprints_april2_v2.nc
+  compress: true
+  per_source: true

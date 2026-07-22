@@ -1,0 +1,53 @@
+# Sacramento Valley — April 2020
+# Diffuse CH₄ source: rice paddies + wetlands (pre-season, low flux)
+# Meteorology: ERA5 downloaded to runs/sacramento_valley_2020/meteo_april/
+#
+# Run from repo root:
+#   python examples/sacramento_valley_2020.py
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_april/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_april
+  run_dir:       ../runs/sacramento_valley_2020/flexpart_april
+
+simulation:
+  start: "2020-04-01T00:00:00"
+  end:   "2020-04-30T00:00:00"
+  output_step_seconds: 10800   # 3-hourly output
+  sync_seconds: 900
+  nxshift: 0                   # 0 = regional grid (negative longitudes); -9999 is for global
+
+domain:
+  lon_min: -123.5
+  lat_min:  37.5
+  lon_max: -119.0
+  lat_max:  41.5
+  dx: 0.001
+  dy: 0.1
+  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24
+
+sources:
+  # Sacramento Valley rice paddies + wetlands — pre-season April flux
+  # Flux: ~0.17 mg CH₄ m⁻² hr⁻¹  (background/early-season wetland)
+  # Covers Colusa, Glenn, Tehama, Sacramento, Sutter, Yolo counties
+  - type: diffuse
+    id: sacval_rice_april
+    lon_min: -122.5
+    lon_max: -120.5
+    lat_min:  38.5
+    lat_max:  40.5
+    alt_m: 2.0
+    emission_flux_kg_m2_s: 2.0e-10   # ~0.17 mg m⁻² hr⁻¹  (pre-season)
+    cell_size_deg: 0.1
+    n_particles_per_cell: 200
+
+output:
+  path: ../outputs/sacval_april_2020.nc
+  compress: true
+  per_source: false

@@ -1,4 +1,4 @@
-from enforceflux.config import load_config
+from enforceflux.models.config import load_config
 from enforceflux.osse import run_osse
 
 if __name__ == "__main__":

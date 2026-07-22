@@ -1,0 +1,76 @@
+# Backward-mode FLEXPART config — March 31 2020, sensors 500 m downwind.
+#
+# Sensors placed 500 m ENE of source (bearing 68°) to keep backward trajectories
+# in the surface layer long enough to register footprint at the source cell.
+# Grid resolution 0.005° (~430-560 m) matches the sensor-to-source distance.
+# Particles increased to 150 000 per sensor (450 000 total) to improve
+# surface-layer sampling statistics.
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_april_week/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_april_week/
+  run_dir:       ../runs/single_source_instrument/backward_run_500m/
+
+simulation:
+  start: "2020-03-31T00:00:00"
+  end:   "2020-04-01T00:00:00"
+  output_step_seconds: 10800
+  sync_seconds: 3600
+  nxshift: 0
+
+# Output grid: tight ±0.2° window around source at 0.005° (~500 m) resolution.
+# ERA5 mother domain unchanged (-122.5 to -121.0, 38.75 to 39.75).
+domain:
+  lon_min: -121.95
+  lat_min:  38.95
+  lon_max: -121.55
+  lat_max:  39.35
+  dx: 0.005
+  dy: 0.005
+  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24
+
+# Sensors 500 m downwind (ENE bearing 68°) of source at (-121.750, 39.150).
+#   sensor_ENE_axis : bearing 68°, 500 m → on plume axis
+#   sensor_NE       : bearing 43°, 500 m → left flank
+#   sensor_E        : bearing 93°, 500 m → right flank
+sources:
+  - type: point
+    id: sensor_ENE_axis
+    lon: -121.7446
+    lat:  39.1517
+    alt_m: 10.0
+    emission_rate_kg_s: 1.0
+    n_particles: 150000
+    start: "2020-03-31T00:00:00"
+    end:   "2020-04-01T00:00:00"
+
+  - type: point
+    id: sensor_NE
+    lon: -121.7460
+    lat:  39.1533
+    alt_m: 10.0
+    emission_rate_kg_s: 1.0
+    n_particles: 150000
+    start: "2020-03-31T00:00:00"
+    end:   "2020-04-01T00:00:00"
+
+  - type: point
+    id: sensor_E
+    lon: -121.7442
+    lat:  39.1498
+    alt_m: 10.0
+    emission_rate_kg_s: 1.0
+    n_particles: 150000
+    start: "2020-03-31T00:00:00"
+    end:   "2020-04-01T00:00:00"
+
+output:
+  path: ../runs/single_source_instrument/backward_footprints_500m.nc
+  compress: true
+  per_source: true

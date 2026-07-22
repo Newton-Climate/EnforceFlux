@@ -1,0 +1,159 @@
+# ============================================================================
+# Sacramento Valley, 2020-03-31 — 300 x 300 m rice paddy, diurnal LES
+# ============================================================================
+#   python examples/microhh_sacramento_diurnal.py \
+#       --config examples/sacramento_ricepaddy_24h.yaml --dry-run
+#
+# Identical met, domain, box and segmentation to sacramento_diurnal_24h.yaml —
+# the ONLY change is the source. That is deliberate: the two runs differ in
+# emission geometry alone, so their outputs are directly comparable.
+# Read sacramento_diurnal_24h.yaml first for why the day is run as eight
+# 3-hourly segments rather than one integration.
+#
+# ── THE SOURCE ──────────────────────────────────────────────────────────────
+# Flux: 2.0e-10 kg m-2 s-1 (~0.17 mg CH4 m-2 hr-1), the pre-season/background
+# wetland flux from examples/sacval_april_2020.yaml. That is the rate matching
+# THIS met — 31 March is pre-flooding. The peak-season rate is 7.5x higher
+# (1.5e-9, sacval_july_2020.yaml); swap it in only alongside July met, or the
+# run pairs a growing-season flux with a pre-season boundary layer.
+#
+#   300 x 300 m x 2.0e-10 kg m-2 s-1 = 1.8e-5 kg/s = 0.065 kg/hr = 1.56 kg/day
+#
+# That is ~1500x weaker than the 100 kg/hr point leak in the companion run.
+# The LES scalar is passive and the source term is linear, so concentrations
+# scale exactly with the flux — a stronger paddy can be obtained by rescaling
+# the output rather than re-running.
+#
+# ── HOW A DIFFUSE AREA SOURCE IS REPRESENTED ────────────────────────────────
+# The transport schema has point sources only (RunSource is id/x_m/y_m/rate);
+# there is no area-source type on this path. The paddy is therefore TILED with
+# 36 point sources on a 6x6 lattice at 50 m spacing, each carrying 1/36 of the
+# total (5.0e-7 kg/s).
+#
+# MicroHH's source shape is exp(-(d/sigma)^2) — sigma is a 1/e half-width, so
+# the true Gaussian std is sigma/sqrt(2). With source_sigma_m: 40 the std is
+# 28.3 m against 50 m spacing, and the overlapping blobs sum to a patch that is
+# uniform to 0.36%. (At sigma 30 the ripple is 5.7% — visible tile structure;
+# do not lower it without re-checking.)
+#
+# Two honest caveats about this representation:
+#   * The patch EDGE is smeared over ~28 m rather than sharp. On a 300 m paddy
+#     that is ~10% of the side. Fine for fetch and flux-footprint questions,
+#     wrong if you need the discontinuity at the bund itself.
+#   * A real paddy is a SURFACE flux; these are volumetric blobs centred at
+#     2 m with a 28 m vertical std. Because dz = 32 m here, ~90% of the mass
+#     still lands in the lowest two model levels, and MicroHH renormalises by
+#     the discrete in-domain integral (source.cxx calc_norm) so no mass is lost
+#     to below-ground tails. But the near-surface vertical gradient is softer
+#     than a true surface flux would give — relevant if you are interpreting
+#     the 3 m in-field EC tower quantitatively.
+#   The rigorous alternative is MicroHH's 2-D surface-flux field
+#   ([boundary] sbot_2d_list), which the case writer does not support.
+# ============================================================================
+
+transport:
+  model: microhh
+  mode: simulation
+  start: "2020-03-31T00:00:00"
+  end:   "2020-04-01T00:00:00"
+
+met:
+  era5:
+    meteo_dir: ../runs/sacramento_valley_2020/meteo_april_week
+    surface_roughness_m: 0.15
+    friction_velocity: log_law
+
+domain:
+  origin_lon: -121.75
+  origin_lat: 39.15
+  x_min: -4300.0
+  x_max:  4300.0
+  y_min: -4450.0
+  y_max:  4450.0
+  spacing_m: 100.0
+  receptor_height_m: 2.0
+
+# ─── sources: the paddy, tiled 6x6 over 300 x 300 m centred on the origin ───
+# Tile centres at +/-25, +/-75, +/-125 m. Sum = 1.8e-5 kg/s.
+sources:
+  - {id: paddy_00, x_m:  -125.0, y_m:  -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_10, x_m:   -75.0, y_m:  -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_20, x_m:   -25.0, y_m:  -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_30, x_m:   +25.0, y_m:  -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_40, x_m:   +75.0, y_m:  -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_50, x_m:  +125.0, y_m:  -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_01, x_m:  -125.0, y_m:   -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_11, x_m:   -75.0, y_m:   -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_21, x_m:   -25.0, y_m:   -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_31, x_m:   +25.0, y_m:   -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_41, x_m:   +75.0, y_m:   -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_51, x_m:  +125.0, y_m:   -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_02, x_m:  -125.0, y_m:   -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_12, x_m:   -75.0, y_m:   -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_22, x_m:   -25.0, y_m:   -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_32, x_m:   +25.0, y_m:   -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_42, x_m:   +75.0, y_m:   -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_52, x_m:  +125.0, y_m:   -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_03, x_m:  -125.0, y_m:   +25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_13, x_m:   -75.0, y_m:   +25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_23, x_m:   -25.0, y_m:   +25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_33, x_m:   +25.0, y_m:   +25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_43, x_m:   +75.0, y_m:   +25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_53, x_m:  +125.0, y_m:   +25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_04, x_m:  -125.0, y_m:   +75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_14, x_m:   -75.0, y_m:   +75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_24, x_m:   -25.0, y_m:   +75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_34, x_m:   +25.0, y_m:   +75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_44, x_m:   +75.0, y_m:   +75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_54, x_m:  +125.0, y_m:   +75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_05, x_m:  -125.0, y_m:  +125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_15, x_m:   -75.0, y_m:  +125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_25, x_m:   -25.0, y_m:  +125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_35, x_m:   +25.0, y_m:  +125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_45, x_m:   +75.0, y_m:  +125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+  - {id: paddy_55, x_m:  +125.0, y_m:  +125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+
+# ─── receptors: a fetch transect ────────────────────────────────────────────
+# The wind blows FROM 142-202 deg all day, i.e. TOWARD roughly north, so
+# downwind is +y. The transect measures how the paddy's footprint builds with
+# fetch and how far its signal persists; upwind_s is the background reference
+# that should stay near zero whenever the wind behaves.
+receptors:
+  - {id: ec_center,  x_m:    0.0, y_m:    0.0, alt_m: 3.0}   # in-field EC tower
+  - {id: edge_n,     x_m:    0.0, y_m:  150.0, alt_m: 3.0}   # downwind bund
+  - {id: fetch_250,  x_m:    0.0, y_m:  250.0, alt_m: 3.0}
+  - {id: fetch_500,  x_m:    0.0, y_m:  500.0, alt_m: 3.0}
+  - {id: fetch_1000, x_m:    0.0, y_m: 1000.0, alt_m: 3.0}
+  - {id: upwind_s,   x_m:    0.0, y_m: -300.0, alt_m: 3.0}   # background
+
+output:
+  path: ../runs/sacramento_ricepaddy_24h/canonical.nc
+  compress: true
+  keep_native: true
+
+microhh:
+  executable: ../microhh/build/microhh
+  num_workers: 4
+
+  # Same box as the point-leak run so the two are comparable.
+  grid: {itot: 192, jtot: 96, ktot: 96, xsize: 3840.0, ysize: 1920.0, zsize: 3072.0}
+
+  # 0.25*xsize. Must clear the paddy's own 150 m half-width AND the 300 m
+  # upwind receptor once the box rotates to each segment's wind.
+  source_x0: 960.0
+
+  # 40 m => 28.3 m std against 50 m tile spacing => 0.36% lattice ripple.
+  # This is the parameter that makes the tiling read as a uniform area source
+  # rather than 36 separate plumes. See the header before changing it.
+  source_sigma_m: 40.0
+
+  spinup_seconds: 1800
+  runtime_seconds: 10800
+  sampletime: 60
+  met_reduce: mean
+
+  extra_ini:
+    dump:
+      swdump: 1
+      dumplist: ch4
+      sampletime: 300

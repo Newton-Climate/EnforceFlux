@@ -13,8 +13,6 @@ Workflow
 Run from repo root:
     python examples/osse_25kg_leak_demo.py
 """
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 
@@ -23,9 +21,11 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from enforceflux.flexpart import FlexpartSimulation
-from enforceflux.models.instrument import INSTRUMENT_DB, Instrument, InstrumentOperator
-from enforceflux.retrieval.inversion import bayesian_linear_inversion
+from enforceflux.core.base import ITransportSimulation
+from enforceflux.utils.plugin_registry import get_plugin
+from enforceflux.instrument import INSTRUMENT_DB, Instrument, InstrumentOperator
+from enforceflux.analysis import analyze_information_content
+from enforceflux.inversion import oe_from_linear
 
 # ─── Scenario parameters ─────────────────────────────────────────────────────
 
@@ -102,8 +102,10 @@ def main() -> None:
         print(f"\n[cache] Using existing output: {OUTPUT_NC.relative_to(REPO_ROOT)}")
     else:
         print("\nRunning FLEXPART simulation …")
-        sim = FlexpartSimulation.from_yaml(CONFIG_YAML)
-        sim.run()
+        simulation = get_plugin(
+            "enforceflux.transport_simulation", "flexpart", ITransportSimulation
+        )()
+        simulation.simulate([], None, {"sim_config": str(CONFIG_YAML)})
         print(f"Output written → {OUTPUT_NC.relative_to(REPO_ROOT)}")
 
     # ── Step 2: read gridded output ─────────────────────────────────
@@ -231,13 +233,14 @@ def main() -> None:
     x_prior   = np.array([Q_PRIOR_KG_HR])
     s_a       = np.array([[Q_PRIOR_STD**2]])
 
-    inversion = bayesian_linear_inversion(
-        g=G_kghr, y=y_inv, x_prior=x_prior, s_a=s_a, r=R_inv
+    oe = oe_from_linear(
+        G=G_kghr, y=y_inv, x_prior=x_prior, Sa=s_a, Se=R_inv,
+        source_names=["ruhr_leak"],
     )
 
-    x_post = float(inversion.x_posterior[0])
-    x_std  = float(np.sqrt(inversion.posterior_cov[0, 0]))
-    ak     = float(inversion.averaging_kernel[0, 0])
+    x_post = float(oe.x_posterior[0])
+    x_std  = float(np.sqrt(oe.posterior_cov[0, 0]))
+    ak     = float(oe.averaging_kernel[0, 0])
 
     print(f"\n  Prior             : {Q_PRIOR_KG_HR:.1f} ± {Q_PRIOR_STD:.1f} kg/hr")
     print(f"  True              : {Q_TRUE_KG_HR:.1f} kg/hr")
@@ -245,12 +248,24 @@ def main() -> None:
     print(f"  Averaging kernel  : {ak:.3f}  (1.0 = perfectly observation-constrained)")
     print(f"  Observations used : {len(valid_er)} (from {len(er_indices)} deployed)")
 
+    # ── Information content analysis ──────────────────────────────────
+    # Build the full ER G-matrix in kg/hr units and compute Fisher metrics.
+    Se_er = np.diag(R_inv) if R_inv.ndim == 2 else R_inv
+    fisher, dof, posterior = analyze_information_content(
+        G=G_kghr, Se=Se_er, Sa=s_a.ravel(),
+        source_names=["ruhr_leak"],
+    )
+    print(f"\n  DFS               : {dof.dfs_total:.3f}  (1.0 = fully observation-constrained)")
+    print(f"  Uncertainty reduc.: {posterior.uncertainty_reduction[0]*100:.0f} %")
+    print(f"  Posterior σ       : {posterior.posterior_sigma[0]:.2f} kg/hr")
+    print(f"  FIM eigenvalue    : {fisher.eigenvalues[0]:.4g}")
+
     # ── Summary ──────────────────────────────────────────────────────
     print("\n" + "=" * 68)
     prior_err  = abs(Q_PRIOR_KG_HR - Q_TRUE_KG_HR)
     post_err   = abs(x_post - Q_TRUE_KG_HR)
-    print(f"  Prior error     : {prior_err:.1f} kg/hr")
-    print(f"  Posterior error : {post_err:.2f} kg/hr")
+    print(f"  Prior error          : {prior_err:.1f} kg/hr")
+    print(f"  Posterior error      : {post_err:.2f} kg/hr")
     print(f"  Uncertainty reduction: {(1 - x_std/Q_PRIOR_STD)*100:.0f} %")
     print("=" * 68)
 

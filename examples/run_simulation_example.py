@@ -3,8 +3,6 @@
 Usage (from repo root):
     python examples/run_simulation_example.py
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +11,9 @@ import numpy as np
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from enforceflux.flexpart import FlexpartSimulation
+from enforceflux.core.base import ITransportSimulation
+from enforceflux.flexpart.sim_config import load_simulation_config
+from enforceflux.utils.plugin_registry import get_plugin
 
 
 CONFIG = Path(__file__).parent / "simulation_test.yaml"
@@ -30,8 +30,10 @@ def main() -> None:
 
     # ── Build simulation from YAML ────────────────────────────────
     print(f"\nLoading config: {CONFIG.relative_to(REPO_ROOT)}")
-    sim = FlexpartSimulation.from_yaml(CONFIG)
-    cfg = sim.config
+    cfg = load_simulation_config(CONFIG)
+    simulation = get_plugin(
+        "enforceflux.transport_simulation", "flexpart", ITransportSimulation
+    )()
 
     print(f"  Period      : {cfg.start.strftime('%Y-%m-%d %H:%M')} → {cfg.end.strftime('%Y-%m-%d %H:%M')} UTC")
     print(f"  Domain      : lon [{cfg.domain_lon_min}, {cfg.domain_lon_max}]  lat [{cfg.domain_lat_min}, {cfg.domain_lat_max}]")
@@ -43,12 +45,12 @@ def main() -> None:
 
     # ── Prepare inputs (dry-run first to inspect) ─────────────────
     print("\nPreparing FLEXPART input files …")
-    run_dir = sim.prepare()
-    _print_releases_summary(run_dir / "options" / "RELEASES")
+    prepared = simulation.simulate([], None, {"sim_config": str(CONFIG), "dry_run": True})
+    _print_releases_summary(Path(prepared.meta["run_dir"]) / "options" / "RELEASES")
 
     # ── Execute FLEXPART ──────────────────────────────────────────
     print("\nRunning FLEXPART …")
-    output_nc = sim.run()
+    output_nc = simulation.simulate([], None, {"sim_config": str(CONFIG)}).output_path
     print(f"\nOutput written → {output_nc.relative_to(REPO_ROOT)}")
 
     # ── Summarise results ─────────────────────────────────────────

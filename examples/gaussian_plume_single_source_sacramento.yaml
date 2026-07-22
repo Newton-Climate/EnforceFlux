@@ -1,0 +1,49 @@
+# Sacramento single-source plume demo
+# Uses July 2020 Sacramento Valley meteorology and a 100 kg/hr point source.
+# Run from the repo root:
+#   python examples/gaussian_plume_single_source_demo.py
+
+flexpart:
+  executable:    ../flexpart/src/FLEXPART
+  options_dir:   ../flexpart/tests/default_options
+  available_file: ../runs/sacramento_valley_2020/meteo_july/AVAILABLE
+  meteo_dir:     ../runs/sacramento_valley_2020/meteo_july/
+  run_dir:       ../runs/gaussian_plume_single_source_sacramento/flexpart_run/
+
+simulation:
+  start: "2020-07-01T00:00:00"
+  end:   "2020-07-02T00:00:00"
+  # Use 3-hour output averaging aligned with ERA5 meteorology resolution.
+  output_step_seconds: 10800
+  sync_seconds: 3600
+  nxshift: 0
+
+domain:
+  # Focus on a Sacramento subdomain with slight edge padding.
+  lon_min: -121.98
+  lat_min:  39.02
+  lon_max: -121.52
+  lat_max:  39.48
+  # Coarser cells improve plume continuity for presentation-style visuals.
+  dx: 0.025
+  dy: 0.025
+  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+
+species:
+  name: CH4
+  number: 24
+
+sources:
+  - type: point
+    id: sacramento_point_100kghr
+    lon: -121.75
+    lat: 39.15
+    alt_m: 5.0
+    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
+    # Higher particle count further reduces shot-noise in each output bin.
+    n_particles: 5000000
+
+output:
+  path: ../runs/gaussian_plume_single_source_sacramento/flexpart_single_source.nc
+  compress: true
+  per_source: false
