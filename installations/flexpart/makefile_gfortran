@@ -1,0 +1,348 @@
+SHELL = /bin/bash
+################################################################################
+#  DESCRIPTION
+#    Makefile for FLEXPART.
+#
+#    Cross-platform fork of the upstream makefile_gfortran, maintained in the
+#    EnforceFlux repo so platform fixes are version-controlled.
+#    Supports: Linux (x86_64, aarch64), macOS (Intel x86_64, Apple Silicon arm64)
+#
+#  USAGE
+#    make [-j] eta=yes
+#    make [-j] eta=yes ncf=no
+#
+################################################################################
+
+## PROGRAMS
+FLEXPART     = FLEXPART
+FLEXPART-BIN = FLEXPART_BIN
+FLEXPART-ETA = FLEXPART_ETA
+FLEXPART-ETA-BIN = FLEXPART_ETA_BIN
+
+export OMP_NESTED=FALSE
+
+ROOT_DIR = . #MD
+
+ifndef CPATH
+$(error CPATH is not set)
+endif
+ifndef LIBRARY_PATH
+$(error LIBRARY_PATH is not set)
+endif
+
+INC := $(subst :, ,$(CPATH))
+INC := $(INC:%=-I%)
+
+LIBPATH := $(subst :, ,$(LIBRARY_PATH))
+# Use comma syntax for -rpath: compatible with both GNU ld (Linux) and
+# Apple ld (macOS). The upstream used -rpath= which only GNU ld accepts.
+LIBRPATH := $(LIBPATH:%=-Wl,-rpath,%)
+LIBPATH  := $(LIBPATH:%=-L%)
+
+### Enable netCDF output?
+ifeq ($(ncf), no)
+	NCOPT = -UUSE_NCF
+else
+	NCOPT = -DUSE_NCF -lnetcdff
+endif
+
+### Enable eta coordinates?
+ifeq ($(eta), no)
+	ETAOPT = -UETA
+else
+	ETAOPT = -DETA
+endif
+
+## OPTIMIZATION LEVEL
+O_LEV     = 3
+O_LEV_DBG = g
+
+ifeq ($(SERIAL), yes)
+	omp = -fopenmp_stubs
+else
+	omp = -fopenmp
+endif
+
+# ── Platform detection ────────────────────────────────────────────────────────
+UNAME_S := $(shell uname -s 2>/dev/null || echo Linux)
+UNAME_M := $(shell uname -m 2>/dev/null || echo x86_64)
+
+# Normalise Windows (MSYS2/Cygwin) to "Linux" for flag purposes
+ifneq (,$(findstring MINGW,$(UNAME_S)))
+	UNAME_S := Linux
+endif
+ifneq (,$(findstring CYGWIN,$(UNAME_S)))
+	UNAME_S := Linux
+endif
+
+# ARM architectures (Apple Silicon = arm64, Linux ARM = aarch64)
+ARM_ARCH := $(filter arm64 aarch64,$(UNAME_M))
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── CPU arch flags ────────────────────────────────────────────────────────────
+# Explicit arch= overrides take precedence over auto-detection.
+ifeq ($(arch), native)
+	FUSER = -g $(omp) -march=core-avx2
+else ifeq ($(arch), x86-64)
+	FUSER = -g $(omp) -march=x86-64
+else ifeq ($(arch), skylake)
+	FUSER = -g $(omp) -march=skylake-avx512
+else ifneq ($(ARM_ARCH),)
+	# ARM (Apple Silicon arm64, Linux aarch64):
+	#   gfortran uses -mcpu not -march; -march=native resolves to a CPU name
+	#   that AArch64 gfortran rejects.
+	FUSER = -g $(omp) -mcpu=native
+else
+	# x86_64 (Intel Mac, Linux x86)
+	FUSER = -g $(omp) -march=native -mtune=native
+endif
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Extra flags that differ by platform ──────────────────────────────────────
+# -m64 / -mcmodel=large:
+#   • x86_64 Linux  → keep both (large model avoids >2GB BSS issues)
+#   • x86_64 macOS  → drop -mcmodel=large (Apple ld doesn't support it)
+#   • ARM (any OS)  → drop both (unsupported by AArch64 gfortran)
+ifneq ($(ARM_ARCH),)
+	PLATFORM_FFLAGS   =
+	PLATFORM_DBGFLAGS =
+else ifeq ($(UNAME_S), Darwin)
+	PLATFORM_FFLAGS   = -m64
+	PLATFORM_DBGFLAGS = -m64
+else
+	# Linux x86_64
+	PLATFORM_FFLAGS   = -m64 -mcmodel=large
+	PLATFORM_DBGFLAGS = -m64 -mcmodel=large
+endif
+# ─────────────────────────────────────────────────────────────────────────────
+
+## MPI
+ifeq ($(mpi), yes)
+	FUSER := $(FUSER) -Dusempi
+else
+	FUSER := $(FUSER) -Duseomp
+endif
+
+## LIBRARIES
+LIBS = -leccodes -leccodes_f90 -lm $(NCOPT) $(ETAOPT)
+
+FFLAGS   = $(INC) -O$(O_LEV) $(PLATFORM_FFLAGS) -cpp $(NCOPT) $(ETAOPT) $(FUSER)
+DBGFLAGS = $(INC) -O$(O_LEV_DBG) -g3 -ggdb3 $(PLATFORM_DBGFLAGS) -cpp \
+           -fconvert=little-endian -frecord-marker=4 -fmessage-length=0 \
+           -flto -O$(O_LEV_DBG) $(NCOPT) $(ETAOPT) -fbacktrace -Wall \
+           -fdump-core $(FUSER)
+
+LDFLAGS  = $(FFLAGS)  $(LIBPATH) $(LIBRPATH) $(LIBS)
+LDDEBUG  = $(DBGFLAGS) $(LIBPATH) $(LIBRPATH) $(LIBS)
+
+ifeq ($(DEBUG), yes)
+	FFLAGS  := $(DBGFLAGS)
+	LDFLAGS := $(LDDEBUG)
+endif
+
+MODOBJS = \
+advance_mod.o           binary_output_mod.o \
+cbl_mod.o               cmapf_mod.o \
+com_mod.o               conv_mod.o \
+class_gribfile_mod.o \
+date_mod.o              drydepo_mod.o \
+erf_mod.o               flux_mod.o \
+getfields_mod.o         initialise_mod.o \
+interpol_mod.o          mean_mod.o \
+outgrid_mod.o \
+output_mod.o            par_mod.o \
+particle_mod.o          pbl_profile_mod.o \
+plume_mod.o             point_mod.o \
+random_mod.o            readoptions_mod.o \
+restart_mod.o           settling_mod.o \
+sort_mod.o \
+timemanager_mod.o       turbulence_mod.o \
+txt_output_mod.o        unc_mod.o \
+verttransform_mod.o     wetdepo_mod.o \
+windfields_mod.o        qvsat_mod.o \
+xmass_mod.o             receptor_mod.o
+
+OBJECTS_NCF = \
+netcdf_output_mod.o     chemistry_mod.o \
+totals_mod.o            initdomain_mod.o \
+receptor_netcdf_mod.o   emissions_mod.o \
+
+OBJECTS_ETA = coord_ecmwf_mod.o
+
+OBJECTS = \
+FLEXPART.o
+
+ifeq ($(ncf), no)
+	OBJECTS := $(OBJECTS)
+ifeq ($(eta), no)
+	FP := $(FLEXPART-BIN)
+else
+	FP := $(FLEXPART-ETA-BIN)
+	OBJECTS := $(OBJECTS) $(OBJECTS_ETA)
+endif
+else
+	OBJECTS := $(OBJECTS) $(OBJECTS_NCF)
+ifeq ($(eta), no)
+	FP := $(FLEXPART)
+else
+	FP := $(FLEXPART-ETA)
+	OBJECTS := $(OBJECTS) $(OBJECTS_ETA)
+endif
+endif
+
+$(info $(OBJECTS))
+
+%.o: %.mod
+
+$(FP): $(MODOBJS) $(OBJECTS)
+	+$(FC) -o $@ $(MODOBJS) $(OBJECTS) $(LDFLAGS)
+
+%.o: %.f90
+	+$(FC) -c $(FFLAGS) $<
+
+clean:
+	\rm -f *.o *.mod
+
+.PHONY: clean
+
+cleanall:
+	\rm -f *.o *.mod $(FLEXPART) $(FLEXPART-BIN) $(FLEXPART-ETA) $(FLEXPART-ETA-BIN)
+
+.SUFFIXES = $(SUFFIXES) .f90
+
+#ETA RECOMPILE
+ifeq ($(eta), no)
+	ifneq ("$(wildcard ./coord_ecmwf_mod.o)","")
+		etadep := "yes"
+	else
+		etadep := "no"
+	endif
+else
+	ifneq ("$(wildcard ./coord_ecmwf_mod.o)","")
+		etadep := "no"
+	else
+		etadep := "yes"
+	endif
+endif
+
+recompile:
+	@echo Why, $(etadep)
+
+#GIT
+GIT_VERSION := "$(shell git log --pretty=format:"%h %ad" -n 1)"
+file_git := gitversion.txt
+
+ifneq ("$(wildcard $(file_git))","")
+GIT_OLD := "$(shell cat ${file_git})"
+else
+GIT_OLD := ""
+endif
+
+gitversion:
+	@echo Added Gitversion: $(GIT_VERSION)
+	@echo Old Gitversion: $(GIT_OLD)
+	sed -i '0,/gitversion_tmp/s;gitversion_tmp.*;gitversion_tmp=$(GIT_VERSION);' FLEXPART.f90
+	@echo $(GIT_VERSION) > gitversion.txt
+
+## DEPENDENCIES
+
+#1) Independent modules
+#   par_mod.o, com_mod.o, qvsat_mod.o, class_gribfile_mod.o
+
+#2) Modules dependent only on independent modules
+cmapf_mod.o: par_mod.o
+com_mod.o: par_mod.o
+date_mod.o: par_mod.o
+erf_mod.o: par_mod.o
+mean_mod.o: par_mod.o
+sort_mod.o: par_mod.o
+ifeq ($(etadep), "yes")
+particle_mod.o: recompile com_mod.o par_mod.o
+else
+particle_mod.o: com_mod.o par_mod.o
+endif
+point_mod.o: com_mod.o par_mod.o
+unc_mod.o: par_mod.o com_mod.o
+cbl_mod.o: com_mod.o par_mod.o random_mod.o
+pbl_profile_mod.o: par_mod.o qvsat_mod.o
+
+#3) 3rd level
+turbulence_mod.o: particle_mod.o cbl_mod.o qvsat_mod.o
+ifeq ($(etadep), "yes")
+windfields_mod.o: recompile cmapf_mod.o point_mod.o class_gribfile_mod.o date_mod.o qvsat_mod.o \
+	pbl_profile_mod.o
+else
+windfields_mod.o: cmapf_mod.o point_mod.o class_gribfile_mod.o date_mod.o qvsat_mod.o \
+	pbl_profile_mod.o
+endif
+
+#4) 4th level
+verttransform_mod.o: par_mod.o com_mod.o qvsat_mod.o windfields_mod.o
+settling_mod.o: windfields_mod.o
+interpol_mod.o: windfields_mod.o particle_mod.o turbulence_mod.o
+
+#5)
+ifneq ($(eta),no)
+coord_ecmwf_mod.o: interpol_mod.o
+endif
+drydepo_mod.o: unc_mod.o interpol_mod.o erf_mod.o
+
+#6)
+ifneq ($(eta),no)
+advance_mod.o: coord_ecmwf_mod.o settling_mod.o drydepo_mod.o turbulence_mod.o
+plume_mod.o: mean_mod.o coord_ecmwf_mod.o
+outgrid_mod.o: unc_mod.o coord_ecmwf_mod.o
+wetdepo_mod.o: coord_ecmwf_mod.o unc_mod.o
+else
+advance_mod.o: interpol_mod.o settling_mod.o drydepo_mod.o turbulence_mod.o
+plume_mod.o: mean_mod.o particle_mod.o windfields_mod.o
+outgrid_mod.o: unc_mod.o interpol_mod.o
+wetdepo_mod.o: interpol_mod.o unc_mod.o
+endif
+readoptions_mod.o: drydepo_mod.o xmass_mod.o
+
+#7)
+getfields_mod.o: wetdepo_mod.o verttransform_mod.o qvsat_mod.o
+flux_mod.o: outgrid_mod.o qvsat_mod.o
+txt_output_mod.o: outgrid_mod.o
+binary_output_mod.o: mean_mod.o outgrid_mod.o
+ifneq ($(ncf), no)
+receptor_mod.o: par_mod.o com_mod.o point_mod.o particle_mod.o date_mod.o \
+	windfields_mod.o receptor_netcdf_mod.o binary_output_mod.o
+else
+receptor_mod.o: par_mod.o com_mod.o point_mod.o particle_mod.o date_mod.o \
+	windfields_mod.o binary_output_mod.o
+endif
+ifneq ($(ncf), no)
+netcdf_output_mod.o: mean_mod.o outgrid_mod.o readoptions_mod.o drydepo_mod.o
+totals_mod.o: par_mod.o com_mod.o netcdf_output_mod.o
+chemistry_mod.o: par_mod.o com_mod.o date_mod.o particle_mod.o \
+	point_mod.o windfields_mod.o totals_mod.o netcdf_output_mod.o
+initdomain_mod.o: par_mod.o com_mod.o point_mod.o random_mod.o outgrid_mod.o \
+	initialise_mod.o totals_mod.o date_mod.o windfields_mod.o netcdf_output_mod.o
+receptor_netcdf_mod.o: par_mod.o com_mod.o point_mod.o date_mod.o \
+	windfields_mod.o netcdf_output_mod.o
+emissions_mod.o: par_mod.o com_mod.o point_mod.o particle_mod.o date_mod.o \
+	netcdf_output_mod.o totals_mod.o windfields_mod.o
+endif
+
+#8)
+conv_mod.o: flux_mod.o class_gribfile_mod.o qvsat_mod.o sort_mod.o
+ifeq ($(ncf), no)
+output_mod.o: binary_output_mod.o txt_output_mod.o
+ifneq ($(eta),no)
+restart_mod.o: coord_ecmwf_mod.o unc_mod.o outgrid_mod.o
+else
+restart_mod.o: interpol_mod.o unc_mod.o outgrid_mod.o
+endif
+else
+output_mod.o: netcdf_output_mod.o binary_output_mod.o txt_output_mod.o
+ifneq ($(eta),no)
+restart_mod.o: coord_ecmwf_mod.o unc_mod.o netcdf_output_mod.o
+else
+restart_mod.o: interpol_mod.o unc_mod.o netcdf_output_mod.o
+endif
+endif
+
+#9)
+initialise_mod.o: interpol_mod.o xmass_mod.o output_mod.o turbulence_mod.o
