@@ -1,10 +1,10 @@
 # ============================================================================
-# One config, any transport model — apps/transport_main.py
+# One config, any transport model — apps/dispersion_main.py
 # ============================================================================
-#   python apps/transport_main.py --config apps/transport_main.yaml
-#   python apps/transport_main.py --config apps/transport_main.yaml --model flexpart
-#   python apps/transport_main.py --config apps/transport_main.yaml --mode operator
-#   python apps/transport_main.py --config apps/transport_main.yaml --dry-run
+#   python apps/dispersion_main.py --config apps/dispersion_main.yaml
+#   python apps/dispersion_main.py --config apps/dispersion_main.yaml --model flexpart
+#   python apps/dispersion_main.py --config apps/dispersion_main.yaml --mode operator
+#   python apps/dispersion_main.py --config apps/dispersion_main.yaml --dry-run
 #
 # CLI overrides: --model, --mode, --output. --dry-run writes each model's input
 # files without executing it (the only path when a Fortran binary is not built).
@@ -170,7 +170,7 @@ receptors:
 # ─── output ─────────────────────────────────────────────────────────────────
 output:
   # [required] Canonical NetCDF: concentration(time, y, x) in ng m-3.
-  path: ../runs/transport_main/transport_main.nc
+  path: ../runs/dispersion_main/dispersion_main.nc
   compress: true      # [opt] true — zlib-compress the canonical NetCDF
   keep_native: true   # [opt] true — also retain each model's raw output
                       #   (FLEXPART grid, MicroHH columns/cross-sections).

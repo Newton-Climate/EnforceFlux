@@ -5,7 +5,7 @@
 #
 # The EnforceFlux FLEXPART simulation schema plus `simulation.mode`. For a
 # model-agnostic run (AERMOD / FLEXPART / MicroHH from one file) use
-# apps/transport_main.yaml instead.
+# apps/dispersion_main.yaml instead.
 #
 # Relative paths resolve against THIS FILE's directory.
 # ============================================================================

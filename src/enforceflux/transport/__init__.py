@@ -7,13 +7,13 @@ NetCDF in ng m⁻³::
 
     from enforceflux.transport import TransportRunConfig, run_transport
 
-    run = TransportRunConfig.from_file("apps/transport_main.yaml")
+    run = TransportRunConfig.from_file("apps/dispersion_main.yaml")
     result = run_transport(run)
     print(result.summary())
 
 See :mod:`enforceflux.transport.run_config` for the schema,
 :mod:`enforceflux.transport.canonical` for the output contract, and
-``apps/transport_main.py`` for the CLI.
+``apps/dispersion_main.py`` for the CLI.
 """
 
 from enforceflux.transport.canonical import (

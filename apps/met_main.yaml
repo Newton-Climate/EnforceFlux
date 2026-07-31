@@ -5,7 +5,7 @@
 #
 # Downloads ERA5 from the CDS and writes the EA* GRIB files plus the AVAILABLE
 # index that FLEXPART reads. Every downstream run (simulation_main,
-# transport_main, and the ERA5-forced MicroHH cases) consumes this output.
+# dispersion_main, and the ERA5-forced MicroHH cases) consumes this output.
 #
 # Needs cdsapi credentials and the `meteo` extra: pip install enforceflux[meteo]
 # Downloads are slow (CDS queues) and large — see met_april_week.yaml for a
