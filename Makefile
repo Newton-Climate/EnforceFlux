@@ -109,8 +109,8 @@ format:
 	ruff format src/ tests/
 	ruff check --fix src/ tests/
 
-# Skip flexpart_integration tests by default; pass MARKERS='' to run all
-MARKERS ?= not flexpart_integration
+# Skip binary-backed integration tests by default; pass MARKERS='' to run all
+MARKERS ?= not flexpart_integration and not microhh_integration
 test: install-dev
 	$(PYTHON) -m pytest tests/ -v -m "$(MARKERS)" --cov=src --cov-report=term-missing
 

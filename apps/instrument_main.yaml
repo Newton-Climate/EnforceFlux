@@ -14,8 +14,7 @@
 
 # ─── input: the field to sample ─────────────────────────────────────────────
 input:
-  # Simulation output to sample — e.g. from apps/simulation_main.py or
-  # apps/transport_main.py.
+  # Simulation output to sample — e.g. from apps/dispersion_main.py.
   simulation_netcdf: ../outputs/simulation_main.nc
 
   # Variable to read. FLEXPART writes `ch4_mixing_ratio` (despite the name,

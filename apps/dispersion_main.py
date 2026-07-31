@@ -7,10 +7,10 @@ simulation output written as a canonical ``concentration(time, y, x)`` NetCDF
 in ng m-3.
 
 Usage:
-    python apps/transport_main.py --config apps/transport_main.yaml
-    python apps/transport_main.py --config apps/transport_main.yaml --model flexpart
-    python apps/transport_main.py --config apps/transport_main.yaml --mode operator
-    python apps/transport_main.py --config apps/transport_main.yaml --dry-run
+    python apps/dispersion_main.py --config apps/dispersion_main.yaml
+    python apps/dispersion_main.py --config apps/dispersion_main.yaml --model flexpart
+    python apps/dispersion_main.py --config apps/dispersion_main.yaml --mode operator
+    python apps/dispersion_main.py --config apps/dispersion_main.yaml --dry-run
 """
 import argparse
 import dataclasses
@@ -80,7 +80,7 @@ def main() -> None:
     if overrides:
         run = dataclasses.replace(run, **overrides)
 
-    print("EnforceFlux transport_main")
+    print("EnforceFlux dispersion_main")
     print(f"Config     : {config_path}")
     print(f"Model      : {run.model}")
     print(f"Mode       : {run.mode}")

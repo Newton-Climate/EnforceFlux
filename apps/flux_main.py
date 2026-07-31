@@ -48,12 +48,12 @@ def main() -> None:
         raise ValueError("input.mode must be 'simulation_receptors' or 'instrument_netcdf'")
 
     if input_mode == "simulation_receptors":
-        G, y_obs, Se, source_names, vname, sim_nc, obs_meta = build_from_receptors_mode(cfg)
+        G, y_obs, Se, source_names, vname, sim_nc, obs_meta, n_flux = build_from_receptors_mode(cfg)
     else:
-        G, y_obs, Se, source_names, vname, sim_nc, obs_meta = build_from_instrument_mode(cfg)
+        G, y_obs, Se, source_names, vname, sim_nc, obs_meta, n_flux = build_from_instrument_mode(cfg)
 
-    n_sources = G.shape[1]
-    x_prior, Sa = build_prior(cfg, n_sources)
+    n_sources = len(source_names)
+    x_prior, Sa = build_prior(cfg, n_sources, n_flux)
 
     inv_cfg = cfg.get("inversion", {})
     method = str(inv_cfg.get("method", "linear")).strip().lower()
@@ -84,17 +84,22 @@ def main() -> None:
             source_names=source_names,
         )
 
+    n_flux_windows = int(G.shape[1] // n_sources)
+    x_prior_ts = np.asarray(x_prior, dtype=float).reshape(n_sources, n_flux_windows)
+    x_opt_ts = np.asarray(result.x_posterior, dtype=float).reshape(n_sources, n_flux_windows)
+
     summary = {
         "input_simulation_netcdf": str(sim_nc),
         "input_mode": input_mode,
         "concentration_variable": vname,
         "n_observations": int(len(y_obs)),
-        "n_sources": int(G.shape[1]),
+        "n_sources": int(n_sources),
+        "n_flux_windows": n_flux_windows,
         "source_names": source_names,
         "method": method,
         "observation_mode": obs_meta,
-        "x_prior_kg_s": x_prior.tolist(),
-        "x_opt_kg_s": np.asarray(result.x_posterior, dtype=float).tolist(),
+        "x_prior_kg_s": x_prior_ts.tolist(),
+        "x_opt_kg_s": x_opt_ts.tolist(),
         "converged": bool(result.converged),
         "n_iter": int(result.n_iter),
         "outputs": {
@@ -113,6 +118,7 @@ def main() -> None:
         Sa=Sa,
         result=result,
         source_names=source_names,
+        n_flux=n_flux_windows,
         summary_extra=summary,
     )
 
@@ -127,7 +133,8 @@ def main() -> None:
     print(f"Config        : {config_path}")
     print(f"Input NC      : {sim_nc}")
     print(f"Input mode    : {input_mode}")
-    print(f"G shape       : {G.shape}")
+    print(f"G shape       : {G.shape}  (obs x sources*windows)")
+    print(f"Flux windows  : {n_flux_windows} per source")
     print(f"Inversion     : {method}")
     print(f"Converged     : {result.converged}")
     print(f"Summary JSON  : {out_json}")

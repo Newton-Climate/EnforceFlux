@@ -16,6 +16,7 @@ def write_flux_outputs(
     Sa: np.ndarray,
     result,
     source_names: list[str],
+    n_flux: int,
     summary_extra: dict[str, Any],
 ) -> tuple[Path, Path, Path]:
     out_cfg = cfg.get("output", {})
@@ -41,12 +42,29 @@ def write_flux_outputs(
         averaging_kernel=result.averaging_kernel,
     )
 
+    n_sources = len(source_names)
+    x_prior_ts = np.asarray(x_prior, dtype=float).reshape(n_sources, n_flux)
+    x_opt_ts = np.asarray(result.x_posterior, dtype=float).reshape(n_sources, n_flux)
+    post_sigma_ts = np.sqrt(
+        np.maximum(np.diag(result.posterior_cov), 0.0)
+    ).reshape(n_sources, n_flux)
+
     with out_csv.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["source", "x_prior_kg_s", "x_opt_kg_s", "posterior_sigma_kg_s"])
-        post_sigma = np.sqrt(np.maximum(np.diag(result.posterior_cov), 0.0))
+        writer.writerow(
+            ["source", "flux_window", "x_prior_kg_s", "x_opt_kg_s", "posterior_sigma_kg_s"]
+        )
         for i, name in enumerate(source_names):
-            writer.writerow([name, float(x_prior[i]), float(result.x_posterior[i]), float(post_sigma[i])])
+            for k in range(n_flux):
+                writer.writerow(
+                    [
+                        name,
+                        k,
+                        float(x_prior_ts[i, k]),
+                        float(x_opt_ts[i, k]),
+                        float(post_sigma_ts[i, k]),
+                    ]
+                )
 
     out_json.write_text(json.dumps(summary_extra, indent=2) + "\n")
     return out_json, out_npz, out_csv

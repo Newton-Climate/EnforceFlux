@@ -97,22 +97,15 @@ Downloads ERA5 for a specified date range and geographic bounding box. Outputs F
 python apps/met_main.py --config apps/met_main.yaml
 ```
 
-### `transport_main.py` — Any transport model, one config
+### `dispersion_main.py` — Any transport model, one config
 
 ```bash
-python apps/transport_main.py --config apps/transport_main.yaml --model aermod
+python apps/dispersion_main.py --config apps/dispersion_main.yaml --model aermod
 ```
 
 Runs AERMOD, FLEXPART, or MicroHH from the shared schema described in
 [Running a transport model](#running-a-transport-model), writing a canonical
 `concentration(time, y, x)` NetCDF regardless of backend.
-
-### `simulation_main.py` — Forward FLEXPART simulation
-Runs a forward CH4 transport simulation: point and/or diffuse sources → gridded concentration field → NetCDF. Useful for visualizing how methane from a given source pattern spreads over a domain.
-
-```bash
-python apps/simulation_main.py --config apps/simulation_main.yaml
-```
 
 ### `flux_main.py` — Flux inversion
 Runs the full inversion pipeline: loads a pre-computed G matrix + prior emissions → Bayesian posterior → flux estimates with uncertainty. Outputs posterior flux maps and uncertainty reduction statistics.
@@ -278,9 +271,9 @@ A fourth request downloads time-invariant fields (land-sea mask, orography) on t
 Every transport model runs from one YAML, and the model is a single line in it:
 
 ```bash
-python apps/transport_main.py --config apps/transport_main.yaml
-python apps/transport_main.py --config apps/transport_main.yaml --model flexpart
-python apps/transport_main.py --config apps/transport_main.yaml --mode operator
+python apps/dispersion_main.py --config apps/dispersion_main.yaml
+python apps/dispersion_main.py --config apps/dispersion_main.yaml --model flexpart
+python apps/dispersion_main.py --config apps/dispersion_main.yaml --mode operator
 ```
 
 Everything above the model blocks is **shared and authoritative** — meteorology,
@@ -303,7 +296,7 @@ sources:
   - {id: leak, lon: -121.75, lat: 39.15, alt_m: 5.0, emission_rate_kg_s: 2.7777778e-2}
 
 output:
-  path: ../runs/transport_main/transport_main.nc
+  path: ../runs/dispersion_main/dispersion_main.nc
 
 flexpart:
   executable: ../flexpart/src/FLEXPART
@@ -606,8 +599,7 @@ src/enforceflux/
 
 apps/
     met_main.py             # ERA5 download pipeline
-    transport_main.py       # Any transport model from one shared config
-    simulation_main.py      # Forward FLEXPART simulation
+    dispersion_main.py      # Any transport model from one shared config
     flux_main.py            # Flux inversion
     analysis_main.py        # Information content analysis
     instrument_main.py      # Instrument OSSE

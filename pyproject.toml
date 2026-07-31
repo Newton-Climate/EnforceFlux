@@ -52,5 +52,6 @@ where = ["src"]
 testpaths = ["tests"]
 markers = [
     "flexpart_integration: exercises the compiled FLEXPART binary and bundled test met data",
+    "microhh_integration: exercises the compiled MicroHH binary and an ERA5-forced LES case",
 ]
 
