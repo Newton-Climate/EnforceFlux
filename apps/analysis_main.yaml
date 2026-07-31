@@ -13,7 +13,7 @@
 
 # ─── input: what to analyse ─────────────────────────────────────────────────
 input:
-  # Either a simulation field (apps/simulation_main.py, apps/dispersion_main.py)
+  # Either a simulation field (apps/dispersion_main.py)
   # or an instrument file (apps/instrument_main.py). The two carry different
   # variables, hence `kind` below.
   netcdf: ../outputs/instrument_main.nc

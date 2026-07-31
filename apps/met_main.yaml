@@ -4,8 +4,8 @@
 #   python apps/met_main.py --config apps/met_main.yaml
 #
 # Downloads ERA5 from the CDS and writes the EA* GRIB files plus the AVAILABLE
-# index that FLEXPART reads. Every downstream run (simulation_main,
-# dispersion_main, and the ERA5-forced MicroHH cases) consumes this output.
+# index that FLEXPART reads. Every downstream run (dispersion_main and the
+# ERA5-forced MicroHH cases) consumes this output.
 #
 # Needs cdsapi credentials and the `meteo` extra: pip install enforceflux[meteo]
 # Downloads are slow (CDS queues) and large — see met_april_week.yaml for a

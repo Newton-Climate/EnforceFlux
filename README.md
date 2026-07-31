@@ -107,13 +107,6 @@ Runs AERMOD, FLEXPART, or MicroHH from the shared schema described in
 [Running a transport model](#running-a-transport-model), writing a canonical
 `concentration(time, y, x)` NetCDF regardless of backend.
 
-### `simulation_main.py` — Forward FLEXPART simulation
-Runs a forward CH4 transport simulation: point and/or diffuse sources → gridded concentration field → NetCDF. Useful for visualizing how methane from a given source pattern spreads over a domain.
-
-```bash
-python apps/simulation_main.py --config apps/simulation_main.yaml
-```
-
 ### `flux_main.py` — Flux inversion
 Runs the full inversion pipeline: loads a pre-computed G matrix + prior emissions → Bayesian posterior → flux estimates with uncertainty. Outputs posterior flux maps and uncertainty reduction statistics.
 
@@ -606,8 +599,7 @@ src/enforceflux/
 
 apps/
     met_main.py             # ERA5 download pipeline
-    dispersion_main.py       # Any transport model from one shared config
-    simulation_main.py      # Forward FLEXPART simulation
+    dispersion_main.py      # Any transport model from one shared config
     flux_main.py            # Flux inversion
     analysis_main.py        # Information content analysis
     instrument_main.py      # Instrument OSSE
