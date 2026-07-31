@@ -5,16 +5,60 @@ import numpy as np
 
 from flux_helpers import (
     build_y_and_se,
-    extract_field_for_release,
     infer_time_size,
     prepare_sim_transport,
-    sample_nearest,
+    sample_step_response,
+    step_to_impulse,
+    toeplitz_convolution_block,
 )
+
+
+def _time_resolved_G(
+    cvar,
+    lons: np.ndarray,
+    lats: np.ndarray,
+    *,
+    n_sources: int,
+    site_lons: np.ndarray,
+    site_lats: np.ndarray,
+    level_index: int,
+    n_time_kernel: int,
+    n_time_obs: int,
+    n_flux: int,
+) -> np.ndarray:
+    """Assemble the block-Toeplitz transport matrix G.
+
+    For every (receptor ``i``, source ``j``) pair the simulation gives a step
+    response (concentration at the receptor from a sustained unit-rate release);
+    first-differencing turns it into the impulse kernel ``h_ij(tau)``, and each
+    kernel becomes a lower-triangular Toeplitz block. Stacking the blocks maps
+    the flat emission state (source-major, window-minor; length
+    ``n_sources * n_flux``) to the flat observation vector (receptor-major,
+    time-minor; length ``n_sites * n_time_obs``).
+    """
+    n_sites = len(site_lons)
+    G = np.zeros((n_sites * n_time_obs, n_sources * n_flux), dtype=float)
+    for j in range(n_sources):
+        for i in range(n_sites):
+            step = sample_step_response(
+                cvar,
+                lons,
+                lats,
+                release_index=j,
+                level_index=level_index,
+                lon=float(site_lons[i]),
+                lat=float(site_lats[i]),
+                n_time=n_time_kernel,
+            )
+            impulse = step_to_impulse(step)
+            block = toeplitz_convolution_block(impulse, n_time_obs, n_flux)
+            G[i * n_time_obs : (i + 1) * n_time_obs, j * n_flux : (j + 1) * n_flux] = block
+    return G
 
 
 def build_from_receptors_mode(
     cfg: dict[str, Any],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], str, Path, dict[str, Any]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], str, Path, dict[str, Any], int]:
     from netCDF4 import Dataset
 
     input_cfg = cfg.get("input", {})
@@ -22,7 +66,6 @@ def build_from_receptors_mode(
     if not sim_nc.exists():
         raise FileNotFoundError(f"Simulation NetCDF not found: {sim_nc}")
 
-    time_index = int(input_cfg.get("time_index", 0))
     level_index = int(input_cfg.get("level_index", 0))
     variable_name_cfg = input_cfg.get("variable_name")
 
@@ -30,37 +73,44 @@ def build_from_receptors_mode(
     if not receptors:
         raise ValueError("At least one receptor is required in receptors[] for input.mode=simulation_receptors")
 
+    site_lons = np.array([float(r["lon"]) for r in receptors], dtype=float)
+    site_lats = np.array([float(r["lat"]) for r in receptors], dtype=float)
+
     with Dataset(sim_nc) as ds:
         vname, lons, lats, cvar, n_sources, source_names = prepare_sim_transport(ds, variable_name_cfg)
+        n_time = infer_time_size(cvar)
+        # One flux window per simulation timestep; observations share that base.
+        n_flux = n_time
+        n_time_obs = n_time
 
-        G = np.zeros((len(receptors), n_sources), dtype=float)
-        for j in range(n_sources):
-            field = extract_field_for_release(
-                cvar,
-                release_index=j,
-                time_index=time_index,
-                level_index=level_index,
-            )
-            for i, rec in enumerate(receptors):
-                G[i, j] = sample_nearest(
-                    field,
-                    lons,
-                    lats,
-                    float(rec["lon"]),
-                    float(rec["lat"]),
-                )
+        G = _time_resolved_G(
+            cvar,
+            lons,
+            lats,
+            n_sources=n_sources,
+            site_lons=site_lons,
+            site_lats=site_lats,
+            level_index=level_index,
+            n_time_kernel=n_time,
+            n_time_obs=n_time_obs,
+            n_flux=n_flux,
+        )
 
-    y_obs, Se, obs_meta = build_y_and_se(cfg, G, receptors)
+    y_obs, Se, obs_meta = build_y_and_se(
+        cfg, G, receptors, n_time_obs=n_time_obs, n_sources=n_sources, n_flux=n_flux
+    )
     obs_meta["input_mode"] = "simulation_receptors"
+    obs_meta["n_time"] = int(n_time_obs)
+    obs_meta["n_flux_windows"] = int(n_flux)
     obs_meta["n_observations_total"] = int(len(y_obs))
     obs_meta["n_observations_used"] = int(len(y_obs))
 
-    return G, y_obs, Se, source_names, vname, sim_nc, obs_meta
+    return G, y_obs, Se, source_names, vname, sim_nc, obs_meta, n_flux
 
 
 def build_from_instrument_mode(
     cfg: dict[str, Any],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], str, Path, dict[str, Any]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], str, Path, dict[str, Any], int]:
     from netCDF4 import Dataset
 
     input_cfg = cfg.get("input", {})
@@ -74,7 +124,6 @@ def build_from_instrument_mode(
 
     level_index = int(input_cfg.get("level_index", 0))
     variable_name_cfg = input_cfg.get("variable_name")
-    reuse_last_sim_time = bool(input_cfg.get("reuse_last_sim_time", True))
 
     from flux_helpers import find_var
 
@@ -115,45 +164,45 @@ def build_from_instrument_mode(
     with Dataset(sim_nc) as ds_s:
         vname, lons, lats, cvar, n_sources, source_names = prepare_sim_transport(ds_s, variable_name_cfg)
         n_time_s = infer_time_size(cvar)
+        # Flux windows are set by the simulation's time base (kernel length);
+        # observations may run longer — lags past the kernel contribute zero
+        # (the plume's transport memory is finite), so no timestep reuse.
+        n_flux = n_time_s
 
-        if n_time_i > n_time_s and not reuse_last_sim_time:
-            raise ValueError(
-                f"Instrument has {n_time_i} timesteps but simulation has {n_time_s}. "
-                "Set input.reuse_last_sim_time: true to reuse final simulation timestep."
-            )
+        G = _time_resolved_G(
+            cvar,
+            lons,
+            lats,
+            n_sources=n_sources,
+            site_lons=inst_lons,
+            site_lats=inst_lats,
+            level_index=level_index,
+            n_time_kernel=n_time_s,
+            n_time_obs=n_time_i,
+            n_flux=n_flux,
+        )
 
-        G_grid = np.zeros((n_time_i, n_inst, n_sources), dtype=float)
-        for t in range(n_time_i):
-            t_sim = t if t < n_time_s else (n_time_s - 1)
-            for j in range(n_sources):
-                field = extract_field_for_release(
-                    cvar,
-                    release_index=j,
-                    time_index=t_sim,
-                    level_index=level_index,
-                )
-                for i in range(n_inst):
-                    G_grid[t, i, j] = sample_nearest(field, lons, lats, inst_lons[i], inst_lats[i])
+    # Reorder instrument grids from (time, inst) to instrument-major, time-minor
+    # so the flat observation index matches G's row order (i * n_time_i + t).
+    y_flat = y_grid.T.reshape(-1)
+    valid_flat = valid_grid.T.reshape(-1) & np.isfinite(y_flat)
+    se_flat = se_grid.T.reshape(-1)
 
-    y_flat = y_grid.reshape(-1)
-    valid_flat = valid_grid.reshape(-1) & np.isfinite(y_flat)
-    se_flat = se_grid.reshape(-1)
     se_valid = se_flat[valid_flat]
     y_valid = y_flat[valid_flat]
-
     if np.any(se_valid <= 0):
         raise ValueError("All observation variances must be positive in instrument mode")
 
-    G_flat = G_grid.reshape(-1, n_sources)
-    G_valid = G_flat[valid_flat]
+    G_valid = G[valid_flat]
 
     obs_meta = {
         "mode": "instrument_netcdf",
         "input_mode": "instrument_netcdf",
         "instrument_netcdf": str(inst_nc),
         "y_variable": y_name,
+        "n_time": int(n_time_i),
+        "n_flux_windows": int(n_flux),
         "n_observations_total": int(y_flat.size),
         "n_observations_used": int(valid_flat.sum()),
-        "reuse_last_sim_time": reuse_last_sim_time,
     }
-    return G_valid, y_valid, se_valid, source_names, vname, sim_nc, obs_meta
+    return G_valid, y_valid, se_valid, source_names, vname, sim_nc, obs_meta, n_flux

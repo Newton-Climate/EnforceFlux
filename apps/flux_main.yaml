@@ -11,6 +11,13 @@
 # Every section below is one term in that equation: `receptors`/`input` build
 # G, `observations` supply y and S_e, `inversion` supplies x_a and S_a.
 #
+# TIME-RESOLVED: the state x is an emission-rate TIME SERIES per source, one
+# window per simulation timestep. The simulation is a sustained unit-rate
+# release, so its per-timestep field is a transport STEP response; G is the
+# block-Toeplitz convolution of the first-differenced (impulse) kernel, mapping
+# x_j(k) to concentration y_i(t) = sum_j sum_{k<=t} h_ij(t-k) x_j(k).
+# Observations (`observed`, y_obs) must therefore be time series, not scalars.
+#
 # Relative paths resolve against THIS FILE's directory.
 # ============================================================================
 
@@ -31,36 +38,36 @@ input:
   # instrument_netcdf: ../outputs/instrument_main.nc
 
   variable_name: ch4_mixing_ratio
-  time_index: 0     # which timestep of the field builds G
   level_index: 0    # vertical level; 0 = surface
-
-  # When mode=instrument_netcdf and the instrument series is longer than the
-  # simulation, reuse the final simulation timestep for the remaining times.
-  # Convenient, but it holds transport fixed while observations keep varying —
-  # so the extra observations carry no new transport information.
-  reuse_last_sim_time: true
+  # The whole simulation time axis is used to build the convolution kernel — the
+  # flux state has one window per simulation timestep. When mode=instrument_netcdf
+  # the instrument series may run longer than the simulation; lags past the kernel
+  # length contribute zero (finite transport memory), so no timestep reuse.
 
 
 # ─── receptors: the rows of G ───────────────────────────────────────────────
 # Observation locations. Used ONLY when input.mode=simulation_receptors.
-# For observations.mode=provided, give `observed` and optionally `sigma`.
+# For observations.mode=provided, `observed` is a TIME SERIES whose length must
+# equal the simulation's number of timesteps; `sigma` is a scalar (constant in
+# time) or a matching-length list. A bare scalar `observed` is broadcast to a
+# constant series — rarely what you want for a time-resolved inversion.
 receptors:
   - id: rec_west
     lon: -122.2
     lat: 38.9
-    observed: 1.2      # measured value entering y
-    sigma: 0.2         # 1-sigma uncertainty; overrides default_sigma below
+    observed: [1.2, 1.3, 1.5, 1.6, 1.5]   # per-timestep measurements entering y
+    sigma: 0.2                             # 1-sigma; overrides default_sigma below
 
   - id: rec_central
     lon: -121.7
     lat: 39.1
-    observed: 1.5
+    observed: [1.5, 1.6, 1.8, 1.9, 1.7]
     sigma: 0.2
 
   - id: rec_north
     lon: -121.4
     lat: 39.8
-    observed: 1.0
+    observed: [1.0, 1.1, 1.2, 1.2, 1.1]
     sigma: 0.2
 
 
@@ -79,10 +86,12 @@ observations:
   # Fallback 1-sigma for any receptor without its own `sigma`.
   default_sigma: 0.2
 
-  # Used only when mode=synthetic_from_truth. Length must equal n_sources.
+  # Used only when mode=synthetic_from_truth. Scalar (all sources/windows),
+  # length n_sources (constant in time), or an (n_sources x n_flux) nested list
+  # for a time-varying truth. y = G @ truth is synthesized on the same time base.
   # Set add_noise: false to test the inversion's algebra in isolation; leave it
   # true for an honest recovery test — noiseless data flatters the result.
-  # truth_flux_kg_s: [0.0002, 0.0001, 0.0003]
+  # truth_flux_kg_s: [[0.0, 0.0, 2.0, 2.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0]]
   # add_noise: true
   # random_seed: 42
 
@@ -95,12 +104,14 @@ inversion:
   #             genuinely nonlinear forward model; slower, same answer here.
   method: linear
 
-  # Prior flux x_a: scalar (applied to all) or a vector of length n_sources.
+  # Prior flux x_a: scalar (all sources/windows), length n_sources (constant in
+  # time), or an (n_sources x n_flux) nested list for a time-varying prior.
   prior_flux_kg_s: 0.0
 
   # Prior covariance S_a — the single most consequential choice here, since it
   # sets how far the solution may move from the prior. Precedence:
-  #   1. prior_covariance_diag (vector)  — per-source variances
+  #   1. prior_covariance_diag            — per-source variances (length
+  #                                         n_sources, or (n_sources x n_flux))
   #   2. prior_variance (scalar)         — same variance for every source
   #   3. prior_sigma_fraction * |x_a|    — fractional; NOTE this degenerates to
   #                                        zero variance when prior_flux is 0,
@@ -124,5 +135,6 @@ output:
   summary_json: ../outputs/flux_inversion_summary.json   # posterior + diagnostics
   matrices_npz: ../outputs/flux_inversion_matrices.npz   # G, S_a, S_e, gain,
                                                          #   averaging kernel
-  posterior_csv: ../outputs/flux_posterior.csv           # per-source estimate
-                                                         #   and uncertainty
+  posterior_csv: ../outputs/flux_posterior.csv           # one row per
+                                                         #   (source, flux_window):
+                                                         #   estimate + uncertainty
