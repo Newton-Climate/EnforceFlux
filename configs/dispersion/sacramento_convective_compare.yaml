@@ -31,7 +31,7 @@
 # ---------------
 #   leak  — one point, 100 kg/hr (2.78e-2 kg/s), sigma 25 m. Defined below.
 #   paddy — 300 x 300 m at 2.0e-10 kg m-2 s-1 (April pre-season flux, from
-#           examples/sacval_april_2020.yaml) = 1.8e-5 kg/s total, tiled as a
+#           configs/dispersion/sacval_april_2020.yaml) = 1.8e-5 kg/s total, tiled as a
 #           6x6 lattice at 50 m spacing with sigma 40 m. Built by the driver,
 #           not listed here, so the geometry stays parameterised in one place.
 #

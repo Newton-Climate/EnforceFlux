@@ -2,7 +2,7 @@
 """Download ERA5 meteorology for FLEXPART from a YAML config.
 
 Usage:
-    python apps/met_main.py --config apps/met_main.yaml
+    enforceflux met --config configs/met/main.yaml
 """
 import argparse
 import os

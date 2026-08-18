@@ -1,7 +1,7 @@
 # ============================================================================
 # Analysis and diagnostics — apps/analysis_main.py
 # ============================================================================
-#   python apps/analysis_main.py --config apps/analysis_main.yaml
+#   python apps/analysis_main.py --config configs/analysis/main.yaml
 #
 # Reads either a raw simulation field or an instrument observation file and
 # produces information-content diagnostics (averaging kernel, DFS, posterior

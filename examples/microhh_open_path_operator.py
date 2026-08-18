@@ -41,8 +41,8 @@ M_AIR, M_CH4 = 28.9647, 16.043
 KGKG_TO_PPM = (M_AIR / M_CH4) * 1e6
 
 # Rice-paddy fluxes from the FLEXPART configs, kg m-2 s-1.
-PADDY_FLUX = {"april": 2.0e-10,   # examples/sacval_april_2020.yaml, pre-season
-              "july": 1.5e-9}     # examples/sacval_july_2020.yaml, peak season
+PADDY_FLUX = {"april": 2.0e-10,   # configs/dispersion/sacval_april_2020.yaml, pre-season
+              "july": 1.5e-9}     # configs/dispersion/sacval_july_2020.yaml, peak season
 PADDY_RUN_SEASON = "april"        # what the LES was actually run with
 
 # The headline beam shoots ACROSS the paddy: centred on the field, spanning its

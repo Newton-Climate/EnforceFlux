@@ -1,10 +1,10 @@
 # ============================================================================
 # One config, any transport model — apps/dispersion_main.py
 # ============================================================================
-#   python apps/dispersion_main.py --config apps/dispersion_main.yaml
-#   python apps/dispersion_main.py --config apps/dispersion_main.yaml --model flexpart
-#   python apps/dispersion_main.py --config apps/dispersion_main.yaml --mode operator
-#   python apps/dispersion_main.py --config apps/dispersion_main.yaml --dry-run
+#   python apps/dispersion_main.py --config configs/dispersion/main.yaml
+#   python apps/dispersion_main.py --config configs/dispersion/main.yaml --model flexpart
+#   python apps/dispersion_main.py --config configs/dispersion/main.yaml --mode operator
+#   python apps/dispersion_main.py --config configs/dispersion/main.yaml --dry-run
 #
 # CLI overrides: --model, --mode, --output. --dry-run writes each model's input
 # files without executing it (the only path when a Fortran binary is not built).

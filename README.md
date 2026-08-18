@@ -88,44 +88,54 @@ sudo apt-get install gfortran libeccodes-dev libnetcdf-dev libnetcdff-dev
 
 ## Apps
 
-The `apps/` directory contains end-to-end pipeline scripts driven by YAML configs. Run any app from the repo root with `python apps/<script>.py --config apps/<config>.yaml`.
+The unified `enforceflux` CLI dispatches per-stage subcommands. YAML configs live under `configs/<stage>/`; the underlying drivers live under `apps/<stage>_main.py` and can still be invoked directly if you prefer.
 
-### `met_main.py` — ERA5 downloader
+### `met` — ERA5 downloader
 Downloads ERA5 for a specified date range and geographic bounding box. Outputs FLEXPART-ready GRIB files and an `AVAILABLE` index.
 
 ```bash
-python apps/met_main.py --config apps/met_main.yaml
+enforceflux met --config configs/met/main.yaml
 ```
 
-### `dispersion_main.py` — Any transport model, one config
+### `dispersion` — Any transport model, one config
 
 ```bash
-python apps/dispersion_main.py --config apps/dispersion_main.yaml --model aermod
+enforceflux dispersion --config configs/dispersion/main.yaml --model aermod
 ```
 
 Runs AERMOD, FLEXPART, or MicroHH from the shared schema described in
 [Running a transport model](#running-a-transport-model), writing a canonical
 `concentration(time, y, x)` NetCDF regardless of backend.
 
-### `flux_main.py` — Flux inversion
+### `flux` — Flux inversion
 Runs the full inversion pipeline: loads a pre-computed G matrix + prior emissions → Bayesian posterior → flux estimates with uncertainty. Outputs posterior flux maps and uncertainty reduction statistics.
 
 ```bash
-python apps/flux_main.py --config apps/flux_main.yaml
+enforceflux flux --config configs/flux/main.yaml
 ```
 
-### `analysis_main.py` — Information content analysis
+### `analysis` — Information content analysis
 Takes an existing transport Jacobian G and sensor configuration and computes DFS, averaging kernel, posterior covariance, and sensor ablation rankings.
 
 ```bash
-python apps/analysis_main.py --config apps/analysis_main.yaml
+enforceflux analysis --config configs/analysis/main.yaml
 ```
 
-### `instrument_main.py` — Instrument OSSE
+### `instrument` — Instrument OSSE
 Single-source instrument sensitivity experiment. Builds an analytical Gaussian-plume G for a configurable sensor network, runs the full information content analysis, and generates diagnostic figures (footprints, DFS spatial map, posterior uncertainty, sensor ablation).
 
 ```bash
-python apps/instrument_main.py --config apps/instrument_main.yaml
+enforceflux instrument --config configs/instrument/main.yaml
+```
+
+### `obs` — Real-observation ingress *(planned)*
+Reserved subcommand. Parses a user-supplied observation file into the same `obs.parquet` schema the `instrument` stage produces so `flux` can consume real observations without knowing the difference. Ingress wiring lands with the run-artifact contract (D2b).
+
+### `osse` — Legacy end-to-end OSSE
+Single-JSON-config OSSE covering source → instrument → transport → inversion → metrics. Kept for backward compatibility; new work should compose the per-stage subcommands.
+
+```bash
+enforceflux osse --config examples/quickstart_config.json
 ```
 
 ### Examples
@@ -271,9 +281,9 @@ A fourth request downloads time-invariant fields (land-sea mask, orography) on t
 Every transport model runs from one YAML, and the model is a single line in it:
 
 ```bash
-python apps/dispersion_main.py --config apps/dispersion_main.yaml
-python apps/dispersion_main.py --config apps/dispersion_main.yaml --model flexpart
-python apps/dispersion_main.py --config apps/dispersion_main.yaml --mode operator
+enforceflux dispersion --config configs/dispersion/main.yaml
+enforceflux dispersion --config configs/dispersion/main.yaml --model flexpart
+enforceflux dispersion --config configs/dispersion/main.yaml --mode operator
 ```
 
 Everything above the model blocks is **shared and authoritative** — meteorology,
@@ -483,13 +493,13 @@ Two source types are supported:
 ```python
 from enforceflux.flexpart import FlexpartSimulation
 
-sim = FlexpartSimulation.from_yaml("examples/simulation_config.yaml")
+sim = FlexpartSimulation.from_yaml("configs/dispersion/simulation_config.yaml")
 output_nc = sim.run()   # returns path to output NetCDF
 ```
 
 ### YAML config reference
 
-A fully-annotated example lives at [`examples/simulation_config.yaml`](examples/simulation_config.yaml).
+A fully-annotated example lives at [`configs/dispersion/simulation_config.yaml`](configs/dispersion/simulation_config.yaml).
 
 #### `flexpart` — binary and directories
 

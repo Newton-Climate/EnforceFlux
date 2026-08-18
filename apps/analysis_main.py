@@ -2,7 +2,7 @@
 """Run reproducible analysis from simulation or instrument NetCDF outputs.
 
 Usage:
-    python apps/analysis_main.py --config apps/analysis_main.yaml
+    enforceflux analysis --config configs/analysis/main.yaml
 """
 import argparse
 import json

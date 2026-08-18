@@ -1,7 +1,7 @@
 # FLEXPART methane transport simulation config
 # Run with:
 #   from enforceflux.flexpart import FlexpartSimulation
-#   sim = FlexpartSimulation.from_yaml("examples/simulation_config.yaml")
+#   sim = FlexpartSimulation.from_yaml("configs/dispersion/simulation_config.yaml")
 #   output_path = sim.run()
 
 flexpart:

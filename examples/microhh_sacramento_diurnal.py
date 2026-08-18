@@ -1,7 +1,7 @@
 """Drive a full diurnal cycle of MicroHH LES over the Sacramento Valley.
 
 MicroHH takes one steady forcing per run, so a real day cannot be a single
-integration (see examples/sacramento_diurnal_24h.yaml for why). This driver
+integration (see configs/dispersion/sacramento_diurnal_24h.yaml for why). This driver
 slices 2020-03-31 into the eight 3-hourly ERA5 records and runs one LES
 segment per record, each in its own wind-aligned box.
 

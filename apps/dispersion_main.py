@@ -7,10 +7,10 @@ simulation output written as a canonical ``concentration(time, y, x)`` NetCDF
 in ng m-3.
 
 Usage:
-    python apps/dispersion_main.py --config apps/dispersion_main.yaml
-    python apps/dispersion_main.py --config apps/dispersion_main.yaml --model flexpart
-    python apps/dispersion_main.py --config apps/dispersion_main.yaml --mode operator
-    python apps/dispersion_main.py --config apps/dispersion_main.yaml --dry-run
+    enforceflux dispersion --config configs/dispersion/main.yaml
+    enforceflux dispersion --config configs/dispersion/main.yaml --model flexpart
+    enforceflux dispersion --config configs/dispersion/main.yaml --mode operator
+    enforceflux dispersion --config configs/dispersion/main.yaml --dry-run
 """
 import argparse
 import dataclasses

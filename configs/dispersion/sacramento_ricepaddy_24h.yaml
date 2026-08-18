@@ -2,7 +2,7 @@
 # Sacramento Valley, 2020-03-31 — 300 x 300 m rice paddy, diurnal LES
 # ============================================================================
 #   python examples/microhh_sacramento_diurnal.py \
-#       --config examples/sacramento_ricepaddy_24h.yaml --dry-run
+#       --config configs/dispersion/sacramento_ricepaddy_24h.yaml --dry-run
 #
 # Identical met, domain, box and segmentation to sacramento_diurnal_24h.yaml —
 # the ONLY change is the source. That is deliberate: the two runs differ in
@@ -12,7 +12,7 @@
 #
 # ── THE SOURCE ──────────────────────────────────────────────────────────────
 # Flux: 2.0e-10 kg m-2 s-1 (~0.17 mg CH4 m-2 hr-1), the pre-season/background
-# wetland flux from examples/sacval_april_2020.yaml. That is the rate matching
+# wetland flux from configs/dispersion/sacval_april_2020.yaml. That is the rate matching
 # THIS met — 31 March is pre-flooding. The peak-season rate is 7.5x higher
 # (1.5e-9, sacval_july_2020.yaml); swap it in only alongside July met, or the
 # run pairs a growing-season flux with a pre-season boundary layer.

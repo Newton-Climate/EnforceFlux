@@ -1,7 +1,7 @@
 # ============================================================================
 # Flux inversion — apps/flux_main.py
 # ============================================================================
-#   python apps/flux_main.py --config apps/flux_main.yaml
+#   python apps/flux_main.py --config configs/flux/main.yaml
 #
 # Builds the transport matrix G from a simulation NetCDF and solves for the
 # posterior fluxes by optimal estimation:

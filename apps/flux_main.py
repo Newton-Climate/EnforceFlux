@@ -2,7 +2,7 @@
 """Build flux inversion matrices from simulation output and run OE inversion.
 
 Usage:
-    python apps/flux_main.py --config apps/flux_main.yaml
+    enforceflux flux --config configs/flux/main.yaml
 """
 import argparse
 import json

@@ -1,7 +1,7 @@
 # ============================================================================
 # Instrument forward operator — apps/instrument_main.py
 # ============================================================================
-#   python apps/instrument_main.py --config apps/instrument_main.yaml
+#   python apps/instrument_main.py --config configs/instrument/main.yaml
 #
 # Applies the instrument operator H and a heteroscedastic noise model to a
 # simulated concentration field:   y = H(field) + eps

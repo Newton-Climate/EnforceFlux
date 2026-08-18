@@ -11,7 +11,7 @@
 #
 # Only the settings this case needs are listed. For the full catalogue of
 # available settings — every key, its units, default and trade-offs — see
-# examples/microhh_reference.yaml.
+# configs/dispersion/microhh_reference.yaml.
 #
 # Geometry: sources/receptors are given in lon/lat and projected into a
 # wind-aligned box where +x is downwind (domain.x_bearing_deg) and +y is

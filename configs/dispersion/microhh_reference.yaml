@@ -5,7 +5,7 @@
 # with units, defaults, and guidance. This file is documentation, not a case to
 # run as-is: it shows defaults explicitly, which a real config would omit.
 #
-# Copy examples/microhh_sacramento_demo.yaml instead to start a real case.
+# Copy configs/dispersion/microhh_sacramento_demo.yaml instead to start a real case.
 #
 # CONVENTIONS
 #   [required]  loader raises KeyError if absent

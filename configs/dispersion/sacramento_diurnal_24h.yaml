@@ -20,7 +20,7 @@
 # through it. Treat each segment's first `spinup_seconds` as non-physical.
 #
 # Everything below is the standard transport contract (see
-# apps/dispersion_main.yaml): domain.origin_lon/lat is the only geographic
+# configs/dispersion/main.yaml): domain.origin_lon/lat is the only geographic
 # coordinate, all sources and receptors are metres east/north of it.
 # ============================================================================
 

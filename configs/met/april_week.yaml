@@ -6,9 +6,9 @@
 # avoids the near-calm anomaly on April 1-2 dominating the result.
 #
 # Usage:
-#   python apps/met_main.py --config apps/met_april_week.yaml
+#   python apps/met_main.py --config configs/met/april_week.yaml
 #
-# Same schema as apps/met_main.yaml — see that file for every setting, its
+# Same schema as configs/met/main.yaml — see that file for every setting, its
 # units and defaults. Only the window, output_dir and skip behaviour differ.
 
 meteo:

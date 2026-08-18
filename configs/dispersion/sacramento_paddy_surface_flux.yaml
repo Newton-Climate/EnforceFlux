@@ -2,7 +2,7 @@
 # Rice paddy as a REAL surface flux, on a surface-resolving grid
 # ============================================================================
 #   python examples/microhh_point_vs_diffuse.py \
-#       --config examples/sacramento_paddy_surface_flux.yaml --variants paddy
+#       --config configs/dispersion/sacramento_paddy_surface_flux.yaml --variants paddy
 #
 # WHY THIS RUN EXISTS
 # -------------------

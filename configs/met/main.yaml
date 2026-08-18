@@ -1,7 +1,7 @@
 # ============================================================================
 # ERA5 meteorology download — apps/met_main.py
 # ============================================================================
-#   python apps/met_main.py --config apps/met_main.yaml
+#   python apps/met_main.py --config configs/met/main.yaml
 #
 # Downloads ERA5 from the CDS and writes the EA* GRIB files plus the AVAILABLE
 # index that FLEXPART reads. Every downstream run (dispersion_main and the

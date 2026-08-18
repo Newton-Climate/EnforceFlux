@@ -59,7 +59,7 @@ def main() -> None:
     if not args.meteo_dir.is_dir():
         sys.exit(
             f"ERA5 meteorology not found at {args.meteo_dir}.\n"
-            "Download it first:  python apps/met_main.py --config apps/met_main.yaml"
+            "Download it first:  python apps/met_main.py --config configs/met/main.yaml"
         )
 
     start = datetime.fromisoformat(args.date).replace(tzinfo=timezone.utc)

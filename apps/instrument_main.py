@@ -2,7 +2,7 @@
 """Apply EnforceFlux instrument operator to simulation NetCDF output.
 
 Usage:
-    python apps/instrument_main.py --config apps/instrument_main.yaml
+    enforceflux instrument --config configs/instrument/main.yaml
 """
 import argparse
 import csv
