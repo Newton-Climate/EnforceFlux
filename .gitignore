@@ -7,9 +7,10 @@ __pycache__/
 dist/
 build/
 
-# Outputs and run directories
-outputs/
-runs/
+# Output and run directories at the repo root (not the enforceflux.runs
+# package or tests/runs test module — those live under src/ and tests/).
+/outputs/
+/runs/
 
 # macOS
 .DS_Store
