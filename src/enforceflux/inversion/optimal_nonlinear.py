@@ -1,5 +1,12 @@
-"""Nonlinear optimal-estimation solver (Levenberg-Marquardt)."""
-from typing import Callable
+"""Nonlinear optimal-estimation solver (Levenberg-Marquardt).
+
+Convergence: Rodgers d-i-squared by default (Rodgers 2000, section 5.4):
+    d = dx.T @ (K.T @ Se_inv @ K + Sa_inv) @ dx
+    converged when d / n_state < rodgers_tol.
+The legacy scale-dependent test max(abs(dx)) < eps remains available via
+``convergence_test="max_abs"``. See the optimal-estimation skill for why.
+"""
+from typing import Callable, Literal
 
 import numpy as np
 
@@ -45,8 +52,21 @@ def optimize_oe(
     eps: float = 1e-4,
     fd_step: float = 1e-5,
     source_names: list[str] | None = None,
+    convergence_test: Literal["rodgers", "max_abs"] = "rodgers",
+    rodgers_tol: float = 0.01,
 ) -> InversionResult:
-    """Nonlinear Optimal Estimation via Levenberg-Marquardt."""
+    """Nonlinear Optimal Estimation via Levenberg-Marquardt.
+
+    Parameters
+    ----------
+    convergence_test : "rodgers" (default) or "max_abs".
+        "rodgers": terminate when d / n_state < rodgers_tol, where
+            d = dx.T @ (K.T @ Se_inv @ K + Sa_inv) @ dx at the accepted iterate
+            (Rodgers 2000, section 5.4). Scale-invariant.
+        "max_abs": legacy behaviour, terminate when max(abs(dx)) < eps.
+            Scale-dependent; retained for backward compatibility.
+    rodgers_tol : threshold for the Rodgers test, default 0.01.
+    """
     y = np.asarray(y, dtype=float)
     xa = np.asarray(x_prior, dtype=float)
     x = xa.copy()
@@ -68,6 +88,8 @@ def optimize_oe(
     lam = float(lam0)
     cost_hist: list[float] = []
     converged = False
+    n_state = len(xa)
+    conv_value: float = float("nan")
 
     for _ in range(n_iter):
         Fx = np.asarray(F(x), dtype=float)
@@ -83,7 +105,11 @@ def optimize_oe(
         cost = float(resid @ Se_inv @ resid + prior_r @ Sa_inv @ prior_r)
         cost_hist.append(cost)
 
-        H_mat = KtSeK + Sa_inv + lam * np.eye(len(xa))
+        # H_undamped is the current-iterate posterior precision (Sx^{-1}); used
+        # both for the LM solve (with lam*I added) and, when the step is
+        # accepted, for the Rodgers d-i-squared convergence test.
+        H_undamped = KtSeK + Sa_inv
+        H_mat = H_undamped + lam * np.eye(n_state)
         g_vec = KtSe_r + Sa_inv @ prior_r
 
         try:
@@ -97,12 +123,22 @@ def optimize_oe(
         if cost_new < cost:
             x = x_new
             lam = max(lam / lam_factor, 1e-12)
+            # Convergence test evaluated ONLY on accepted steps. The old code
+            # tested on the trial dx unconditionally, which could return
+            # converged=True on a rejected step.
+            if convergence_test == "rodgers":
+                d_sq = float(dx @ H_undamped @ dx)
+                conv_value = d_sq / max(n_state, 1)
+                if conv_value < rodgers_tol:
+                    converged = True
+                    break
+            else:  # "max_abs"
+                conv_value = float(np.max(np.abs(dx)))
+                if conv_value < eps:
+                    converged = True
+                    break
         else:
             lam = min(lam * lam_factor, 1e10)
-
-        if float(np.max(np.abs(dx))) < eps:
-            converged = True
-            break
 
     K_f = _jacobian(x)
     KtSeK_f = K_f.T @ Se_inv @ K_f
@@ -113,7 +149,7 @@ def optimize_oe(
         Sx = np.linalg.pinv(H_f)
     A = Sx @ KtSeK_f
 
-    return InversionResult(
+    result = InversionResult(
         x_posterior=x,
         x_prior=xa,
         posterior_cov=Sx,
@@ -126,3 +162,10 @@ def optimize_oe(
         n_iter=len(cost_hist),
         source_names=source_names,
     )
+    # Attach convergence-test metadata for downstream reporting.
+    # InversionResult is a frozen dataclass, so use object.__setattr__.
+    threshold = rodgers_tol if convergence_test == "rodgers" else eps
+    object.__setattr__(result, "convergence_criterion", convergence_test)
+    object.__setattr__(result, "convergence_value", conv_value)
+    object.__setattr__(result, "convergence_threshold", threshold)
+    return result

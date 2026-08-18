@@ -20,7 +20,9 @@ sim_config : str
     instrument rows; its sources define the columns.
 reduce : str
     How to collapse each receptor's time series to a scalar Jacobian entry:
-    ``"mean"`` (default) or ``"max"``.
+    ``"mean"`` (default), ``"max"``, or ``"ec_covariance"``. The latter
+    computes a physical EC flux operator from LES-resolved ``w'CH4'`` and
+    requires sufficiently frequent MicroHH column output.
 dry_run : bool
     Prepare inputs without executing. Returns a zero ``g`` with prepared paths
     in ``meta`` (useful for wiring/inspection before the binary exists).
@@ -62,13 +64,17 @@ class MicroHHTransportOperator(ITransportOperator):
         dry_run = bool(config.get("dry_run", False))
         reduce = str(config.get("reduce", "mean")).lower()
         _reducer = {"mean": np.mean, "max": np.max}.get(reduce)
-        if _reducer is None:
-            raise ValueError(f"Unknown reduce={reduce!r}; expected 'mean' or 'max'.")
+        if _reducer is None and reduce != "ec_covariance":
+            raise ValueError(
+                f"Unknown reduce={reduce!r}; expected 'mean', 'max', or 'ec_covariance'."
+            )
 
         n_inst = len(base_cfg.receptors)
         n_src = len(base_cfg.sources)
         g = np.zeros((n_inst, n_src))
         meta: dict[str, Any] = {"backend": "microhh", "reduce": reduce, "runs": []}
+        source_run_configs = []
+        source_rates = []
 
         # One unit-emission LES per source; scale the receptor response to a
         # Jacobian column [concentration / (kg s-1)].
@@ -88,13 +94,57 @@ class MicroHHTransportOperator(ITransportOperator):
             if dry_run or not run.executed:
                 continue
 
+            if reduce == "ec_covariance":
+                source_run_configs.append(single)
+                source_rates.append(src.emission_rate_kg_s * single.emission_scale)
+                continue
+
             series = read_receptor_series(single)
             # Response per unit physical emission rate [kg/s] → Jacobian column.
             emitted_kg_s = src.emission_rate_kg_s * single.emission_scale
             col = np.array([_reducer(series.values[:, i]) for i in range(n_inst)])
             g[:, j] = col / emitted_kg_s
 
-        meta["units"] = "scalar mixing ratio / (kg s-1)"
+        if reduce == "ec_covariance" and not dry_run:
+            from enforceflux.microhh.ec_operator import (
+                build_ec_observation_operator_from_microhh_runs,
+            )
+
+            if len(source_run_configs) != n_src:
+                raise RuntimeError("Not all source-specific MicroHH runs completed for EC covariance.")
+            ec = build_ec_observation_operator_from_microhh_runs(
+                source_run_configs,
+                measurement_height_m=float(config.get("measurement_height_m", 20.0)),
+                source_emission_rates_kg_s=np.asarray(source_rates),
+                air_density_kg_m3=float(config.get("air_density_kg_m3", 1.2)),
+                window_s=float(config.get("ec_window_s", 1800.0)),
+                min_samples=int(config.get("ec_min_samples", 120)),
+                n_error_blocks=int(config.get("ec_error_blocks", 6)),
+                max_missing_fraction=float(config.get("ec_max_missing_fraction", 0.1)),
+                min_ustar_m_s=(
+                    None if config.get("ec_min_ustar_m_s") is None
+                    else float(config["ec_min_ustar_m_s"])
+                ),
+            )
+            if not np.any(ec.valid_mask):
+                raise RuntimeError(
+                    "No valid LES EC windows. Use faster MicroHH column sampling, a longer "
+                    "runtime, or relax ec_min_samples/QC settings."
+                )
+            g = np.nanmean(np.where(ec.valid_mask[:, :, None], ec.g, np.nan), axis=0)
+            meta["ec"] = {
+                **ec.meta,
+                "window_times_s": ec.times_s.tolist(),
+                "valid_mask": ec.valid_mask.tolist(),
+                "random_error": ec.random_error.tolist(),
+                "n_samples": ec.n_samples.tolist(),
+            }
+
+        meta["units"] = (
+            "nmol m-2 s-1 / (kg s-1)"
+            if reduce == "ec_covariance"
+            else "scalar mixing ratio / (kg s-1)"
+        )
         meta["dry_run"] = dry_run
         return ForwardModelResult(g=g, meta=meta)
 

@@ -424,13 +424,17 @@ class InstrumentOperator:
                 if not np.any(finite_window):
                     continue
 
-                # The Jacobian row used downstream is H_g at the sample step;
-                # a non-finite row cannot back a usable observation.
-                if not np.all(np.isfinite(H_g[t_idx, i])):
+                window_rows = H_g[window_mask, i]
+                finite_rows = np.all(np.isfinite(window_rows), axis=1)
+                if not np.any(finite_rows):
                     continue
 
                 yc = float(np.mean(window_values[finite_window]))
                 y_clean[t_idx, i] = yc
+                # The observation and its Jacobian must represent the same
+                # averaging window. Returning the endpoint row here makes
+                # y_clean != H_g @ x whenever transport changes in-window.
+                H_g[t_idx, i] = np.mean(window_rows[finite_rows], axis=0)
 
                 sigma_i = math.sqrt((p.sigma_scale * abs(yc)) ** 2 + p.sigma_abs**2)
                 noise_var[t_idx, i] = sigma_i**2

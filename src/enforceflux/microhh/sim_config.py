@@ -244,6 +244,11 @@ class MicroHHConfig:
     # MicroHH's shipped cases.
     dt_max_s: float = 60.0
     sampletime_s: int = 10
+    # Optional per-output cadences. EC needs fast columns (typically 1-10 s),
+    # while cross-sections can remain sparse to avoid excessive disk output.
+    stats_sampletime_s: float | None = None
+    cross_sampletime_s: float | None = None
+    column_sampletime_s: float | None = None
 
     scalar_name: str = "ch4"
     # Multiplier on each source's physical emission_rate_kg_s when writing the
@@ -380,6 +385,15 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
         runtime_s=int(sim.get("runtime_seconds", 21600)),
         dt_max_s=float(sim.get("dt_max", 60.0)),
         sampletime_s=int(sim.get("sampletime", 10)),
+        stats_sampletime_s=(
+            float(sim["stats_sampletime"]) if "stats_sampletime" in sim else None
+        ),
+        cross_sampletime_s=(
+            float(sim["cross_sampletime"]) if "cross_sampletime" in sim else None
+        ),
+        column_sampletime_s=(
+            float(sim["column_sampletime"]) if "column_sampletime" in sim else None
+        ),
         scalar_name=str(spec.get("name", "ch4")),
         emission_scale=float(spec.get("emission_scale", 1.0)),
         num_workers=int(mh.get("num_workers", 1)),
