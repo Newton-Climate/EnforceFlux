@@ -142,14 +142,23 @@ enforceflux osse --config examples/quickstart_config.json
 
 Standalone demo scripts live in `examples/`:
 
+Examples/ holds Python demos for the three canonical scenarios (single point source, rice paddy, optical scintillation). Runnable configs for each live in `configs/dispersion/<scenario>_{aermod,flexpart,microhh}.yaml`.
+
 | Script | Description |
 |---|---|
-| `single_source_instrument_demo.py` | 3-sensor open-path network, 500 m from a point source. Gaussian plume G, Woodbury ICA. |
-| `sacramento_valley_2020.py` | Multi-source Sacramento Valley OSSE; April vs. July met comparison. |
-| `gaussian_plume_single_source_demo.py` | Minimal FLEXPART plume forward simulation with 1 source. |
 | `aermod_single_source_demo.py` | AERMOD Jacobian, concentration field, and meteorological sensitivities via autodiff. |
+| `microhh_sacramento_demo.py` | MicroHH LES for a single Sacramento point source. |
+| `microhh_vs_flexpart_vs_gaussian.py` | Same single-source scenario through all three transport models. |
+| `microhh_point_vs_diffuse.py` | Point leak vs diffuse paddy comparison in MicroHH. |
+| `microhh_paddy_spatial_basis.py` | Rice-paddy spatial-basis projection for the inversion state vector. |
+| `microhh_paddy_animation.py` | Time-lapse rendering of the paddy scenario. |
+| `optical_cn2_fine_run.py` | Fine-grid MicroHH run for CN² refractive-index structure. |
+| `optical_scintillation_psd.py` | Optical scintillation power-spectral-density diagnostics. |
+| `microhh_open_path_operator.py` | Path-integrated open-path optical operator on the paddy scenario. |
+| `plot_open_path_timeseries.py` | Timeseries plot for the open-path operator output. |
+| `instrument_operator_demo.py` | Standalone instrument-operator walkthrough. |
 | `era5_driven_models.py` | One ERA5 window converted into AERMOD, MicroHH, and FLEXPART forcing. |
-| `osse_25kg_leak_demo.py` | OSSE for a 25 kg hr⁻¹ leak detection scenario. |
+| `quickstart.py` + `quickstart_config.json` | Minimal end-to-end OSSE via the legacy `enforceflux osse` path. |
 
 ---
 
@@ -617,10 +626,12 @@ apps/
 examples/
     single_source_instrument_demo.py
     sacramento_valley_2020.py
-    gaussian_plume_single_source_demo.py
     aermod_single_source_demo.py
+    microhh_sacramento_demo.py
+    microhh_vs_flexpart_vs_gaussian.py
+    optical_cn2_fine_run.py
     era5_driven_models.py
-    osse_25kg_leak_demo.py
+    quickstart.py
 
 data/
     bottomup/               # EPA GHGI gridded CH4 NetCDF
