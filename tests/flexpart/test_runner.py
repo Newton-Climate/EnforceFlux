@@ -51,7 +51,7 @@ def _instruments() -> list[Instrument]:
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 def _wrapper_config(tmp_path: Path) -> dict[str, str | bool]:

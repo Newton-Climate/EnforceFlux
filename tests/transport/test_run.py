@@ -27,7 +27,7 @@ from enforceflux.transport import canonical, translate
 SOURCE_LON, SOURCE_LAT = -121.75, 39.15
 
 ERA5_DIR = (
-    Path(__file__).resolve().parents[1] / "runs" / "sacramento_valley_2020" / "meteo_april_week"
+    Path(__file__).resolve().parents[2] / "runs" / "sacramento_valley_2020" / "meteo_april_week"
 )
 requires_era5 = pytest.mark.skipif(
     not ERA5_DIR.is_dir() or importlib.util.find_spec("eccodes") is None,

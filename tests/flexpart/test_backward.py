@@ -38,7 +38,7 @@ from enforceflux.models.source import Source
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 
-REPO_ROOT  = Path(__file__).resolve().parents[1]
+REPO_ROOT  = Path(__file__).resolve().parents[2]
 _BINARY    = REPO_ROOT / "flexpart" / "src" / "FLEXPART"
 _OPTIONS   = REPO_ROOT / "flexpart" / "tests" / "default_options"
 _AVAILABLE = REPO_ROOT / "flexpart" / "tests" / "default_winds" / "AVAILABLE"

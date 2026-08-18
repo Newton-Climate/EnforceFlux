@@ -11,7 +11,7 @@ import pytest
 from enforceflux.core.base import ITransportSimulation, TransportSimulationResult
 from enforceflux.utils.plugin_registry import get_plugin
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 _BINARY = REPO_ROOT / "flexpart" / "src" / "FLEXPART"
 _OPTIONS = REPO_ROOT / "flexpart" / "tests" / "default_options"
 _AVAILABLE = REPO_ROOT / "flexpart" / "tests" / "default_winds" / "AVAILABLE"

@@ -18,7 +18,7 @@ from enforceflux.meteo.adapters import (
 )
 from enforceflux.meteo.record import AIR_CP, AIR_DENSITY, MetRecord, MetSeries
 
-ERA5_DIR = Path(__file__).resolve().parents[1] / "runs" / "sacramento_valley_2020" / "meteo_april_week"
+ERA5_DIR = Path(__file__).resolve().parents[2] / "runs" / "sacramento_valley_2020" / "meteo_april_week"
 SACRAMENTO = (-121.75, 39.15)
 
 requires_era5 = pytest.mark.skipif(
