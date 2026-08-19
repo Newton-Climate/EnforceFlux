@@ -7,9 +7,6 @@ dependencies = ["numpy", "pyproj", "netCDF4", "pytest-cov", "jax", "pyyaml"]
 
 [project.scripts]
 enforceflux = "enforceflux.cli:main"
-# --- source-heterogeneity OSSE (M4) ---
-osse-sweep = "apps.osse_sweep_main:main"
-# --- end M4 ---
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
@@ -19,7 +16,6 @@ all = ["enforceflux[dev,meteo,analysis]"]
 
 [project.entry-points."enforceflux.source"]
 static = "enforceflux.plugins.source_static:StaticSourceModel"
-lognormal_field = "enforceflux.plugins.source_lognormal_field:LognormalFieldSource"
 
 [project.entry-points."enforceflux.instrument"]
 static = "enforceflux.plugins.instrument_static:StaticInstrumentModel"
@@ -57,5 +53,6 @@ testpaths = ["tests"]
 markers = [
     "flexpart_integration: exercises the compiled FLEXPART binary and bundled test met data",
     "microhh_integration: exercises the compiled MicroHH binary and an ERA5-forced LES case",
+    "les_integration: MicroHH-driven E2/E3 anchor cases (M6b); skips cleanly without the binary",
 ]
 

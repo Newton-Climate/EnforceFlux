@@ -23,6 +23,19 @@ flux:
     mode: instrument_netcdf
     level_index: 0
 
+  # --- source-heterogeneity OSSE (M6b) ---
+  # LES pseudo-obs from the E3 nature RunDir; the driver asserts the LES
+  # sampler's ObservationSpec matches the Gaussian H's before use.
+  pseudo_obs:
+    source: les
+    les_run_dir: ../../runs/source_heterogeneity_e3_les_gaussian/dispersion
+    expected_spec:
+      variable: concentration_ppm
+      unit: ppm
+      averaging_window_s: 60.0
+      height_m: 2.0
+      path_length_m: 200.0
+
   observations:
     default_sigma: 0.2
 

@@ -18,6 +18,13 @@ analysis:
     kind: auto
     simulation_variable_names: [concentration, ch4_mixing_ratio, ch4_concentration]
 
+  # --- source-heterogeneity OSSE (M6b) ---
+  # E3 anchor case: match the E2 anchor so the Gaussian-vs-LPDM error floor
+  # is comparable across figures.
+  anchor:
+    L_m: 500.0
+    cv: 1.0
+
   analysis:
     prior_variance: 1.0e-8
 

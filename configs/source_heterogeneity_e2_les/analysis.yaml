@@ -18,6 +18,13 @@ analysis:
     kind: auto
     simulation_variable_names: [concentration, ch4_mixing_ratio, ch4_concentration]
 
+  # --- source-heterogeneity OSSE (M6b) ---
+  # E2 anchor case: aggregate posterior on the inversion basis, then expand
+  # back to the truth grid via basis_mapping.npz for E_Q.
+  anchor:
+    L_m: 500.0
+    cv: 1.0
+
   analysis:
     prior_variance: 1.0e-8
 
