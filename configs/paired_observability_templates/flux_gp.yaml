@@ -1,0 +1,12 @@
+stage: flux
+run: {name: TEMPLATE_GP}
+inputs: {dispersion: ../../runs/TEMPLATE_OPERATOR/dispersion, obs: ../../runs/TEMPLATE/instrument}
+flux:
+  input: {mode: instrument_netcdf, level_index: 0, time_reduce: mean}
+  observations: {default_sigma: 0.01}
+  inversion:
+    method: linear
+    prior_flux_kg_s: 1.111111e-3
+    prior_covariance: {model: gaussian_process, sigma_kg_s: 0.003, L_B_m: 800.0}
+    prior_variance: 9.0e-6
+

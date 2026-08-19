@@ -261,16 +261,24 @@ def build_from_prebuilt_operator_with_instrument(
     total_only = bool(inv_cfg.get("total_only", False))
     if total_only:
         template_name = str(inv_cfg.get("total_template", "truth_shape"))
-        if template_name != "truth_shape":
-            raise ValueError("total_only currently requires total_template: truth_shape")
         q_true = float(truth_fine.sum())
         if q_true <= 0.0:
             raise ValueError("Total source flux must be positive")
-        # Retain the heterogeneous source template but estimate its single
-        # field-wide amplitude Q.  This isolates total-flux observability
-        # from spatial-reconstruction skill while preserving a heterogeneous
-        # nature run and independent LES/AERMOD transport models.
-        G_coarse = (G_fine[row_order] @ (truth_fine / q_true)).reshape(-1, 1)
+        if template_name == "truth_shape":
+            template = truth_fine / q_true
+        elif template_name == "uniform":
+            # A spatially uniform flux density assigns total emissions in
+            # proportion to cell area.  It is deliberately independent of the
+            # heterogeneous truth and therefore suitable for paired sensor
+            # comparisons without oracle knowledge of the source pattern.
+            areas = np.asarray(mapping.fine_cell_areas_m2, dtype=float)
+            template = areas / areas.sum()
+        else:
+            raise ValueError(
+                "total_template must be 'truth_shape' or 'uniform', "
+                f"got {template_name!r}"
+            )
+        G_coarse = (G_fine[row_order] @ template).reshape(-1, 1)
         x_prior = np.array([float(inv_cfg.get("prior_total_flux_kg_s", 0.0))])
         Sa = np.array([float(inv_cfg.get("prior_total_variance", 1.0e-4))])
         names = ["Q_total"]

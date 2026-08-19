@@ -92,3 +92,36 @@ def test_inverse_crime_flag_when_L_B_equals_L_true(tmp_path):
     assert diag["L_true_m"] == 500.0
     assert diag["L_B_m"] == 500.0
     assert diag["inverse_crime_flag"] is True
+
+
+def test_instrument_total_only_uniform_template_is_truth_independent(tmp_path):
+    from netCDF4 import Dataset
+    from enforceflux.runs import read_upstream
+    from flux_inputs import build_from_prebuilt_operator_with_instrument
+
+    disp_root, G_fine, mapping, _ = _stage_dispersion(tmp_path)
+    obs = tmp_path / "obs.nc"
+    with Dataset(obs, "w", format="NETCDF4") as ds:
+        ds.createDimension("time", 1)
+        ds.createDimension("instrument", G_fine.shape[0])
+        ds.createVariable("y_obs", "f8", ("time", "instrument"))[:] = 1.0
+        ds.createVariable("valid_mask", "i1", ("time", "instrument"))[:] = 1
+        ds.createVariable("noise_variance", "f8", ("time", "instrument"))[:] = 0.1
+
+    cfg = {
+        "input": {"time_reduce": "mean"},
+        "inversion": {
+            "total_only": True,
+            "total_template": "uniform",
+            "prior_covariance": {"model": "diagonal", "sigma_kg_s": 0.01},
+        },
+    }
+    result = build_from_prebuilt_operator_with_instrument(
+        cfg, read_upstream(disp_root), obs
+    )
+    G_total, _, _, names, _, _, _, _, _, diagnostics = result
+    area_weights = mapping.fine_cell_areas_m2 / mapping.fine_cell_areas_m2.sum()
+    assert G_total.shape == (G_fine.shape[0], 1)
+    assert np.allclose(G_total[:, 0], G_fine @ area_weights)
+    assert names == ["Q_total"]
+    assert diagnostics["inversion_template"] == "uniform"

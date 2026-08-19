@@ -1,0 +1,30 @@
+experiment:
+  L_source_m: [200, 500, 1000]
+  cv: [0.5, 1.0, 2.0]
+  source_seeds: [0]
+  layout_seeds: [0, 1, 2, 3, 4]
+  n_instruments: [2, 3, 4, 8, 16]
+  technologies: [point, op]
+  inversion_modes: [total_uniform, spatial_gp]
+  nature_run_pattern: source_heterogeneity_les_source_l{L}_cv{cv_slug}
+network:
+  downwind_x_m: 1400.0
+  crosswind_min_m: -600.0
+  crosswind_max_m: 600.0
+  beam_length_m: 400.0
+  beam_quadrature_points: 8
+  layout_jitter_m: 30.0
+inversion:
+  success_error_fraction: 0.20
+  success_probability: 0.90
+  equivalence_error_ratio: [0.90, 1.10]
+  gp_coarsen: 8
+  gp_length_m: 800.0
+  gp_prior_total_kg_s: 0.020
+  gp_sigma_per_cell_kg_s: 0.003
+meteorology:
+  cases:
+    - id: july01_2026
+      directory: ../../runs/sacramento_valley_2026_july01_point/met
+      nature_suffix: ''
+

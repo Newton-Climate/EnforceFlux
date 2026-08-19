@@ -1,0 +1,33 @@
+stage: dispersion
+run: {name: TEMPLATE_OPERATOR}
+inputs: {}
+dispersion:
+  transport: {model: flexpart, mode: operator, start: '2026-07-01T12:00:00', end: '2026-07-01T13:00:00'}
+  met:
+    era5: {meteo_dir: ../../runs/sacramento_valley_2026_july01_point/met}
+  domain: {origin_lon: -121.75, origin_lat: 39.15, x_min: -2200.0, x_max: 2200.0, y_min: -2200.0, y_max: 2200.0, spacing_m: 80.0, receptor_height_m: 3.0, heights_m: [100.0]}
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 2.7778e-2
+      grid: {nx: 48, ny: 24, dx_m: 80.0, origin_x_m: -1920.0, origin_y_m: -960.0}
+      alt_m: 2.0
+      covariance: {model: exponential, L_m: 500.0}
+      cv: 1.0
+      seed: 0
+      basis: {coarsen: 8}
+      prior: {mean_kg_s_per_cell: 0.0}
+  receptors: []
+  flexpart:
+    executable: ../../flexpart/src/FLEXPART
+    options_dir: ../../flexpart/options
+    n_particles: 10000
+    species_number: 24
+    output_step_seconds: 300
+    sync_seconds: 150
+    nxshift: 0
+    mode: backward
+    path_samples: 8
+    cache: true
+    surface_only: true
+
