@@ -142,17 +142,7 @@ class FlexpartBackwardRunner:
             raise ValueError("instruments list is empty")
         if not sources:
             raise ValueError("sources list is empty")
-        if not self.domain.crs:
-            raise ValueError("domain.crs must be set to use FlexpartBackwardRunner")
-
-        try:
-            from pyproj import Transformer
-        except ImportError as exc:
-            raise RuntimeError("pyproj is required: pip install pyproj") from exc
-
-        transformer = Transformer.from_crs(
-            self.domain.crs, self.domain.crs_wgs84, always_xy=True
-        )
+        to_lonlat = self._coordinate_transformer()
 
         base_run_dir = Path(self.config.get("base_run_dir", "runs/flexpart_backward")).resolve()
         base_run_dir.mkdir(parents=True, exist_ok=True)
@@ -166,42 +156,76 @@ class FlexpartBackwardRunner:
         src_lons = np.empty(n_src)
         src_lats = np.empty(n_src)
         for j, src in enumerate(sources):
-            src_lons[j], src_lats[j] = transformer.transform(src.x, src.y)
+            src_lons[j], src_lats[j] = to_lonlat(src.x, src.y)
 
         for i, inst in enumerate(instruments):
-            inst_lon, inst_lat = transformer.transform(inst.x, inst.y)
-            run_dir = base_run_dir / f"receptor_{inst.id}"
-            options_dir = run_dir / "options"
-            output_dir = run_dir / "output"
-            pathnames = run_dir / "pathnames"
+            rows: list[np.ndarray] = []
+            component_runs = []
+            for component_id, x, y in self._sampling_points(inst):
+                inst_lon, inst_lat = to_lonlat(x, y)
+                run_dir = base_run_dir / f"receptor_{component_id}"
+                options_dir = run_dir / "options"
+                output_dir = run_dir / "output"
+                pathnames = run_dir / "pathnames"
+                dry_run = bool(self.config.get("dry_run", False))
+                cache = bool(self.config.get("cache", True))
+                should_run = not (cache and self._has_output(output_dir))
 
-            dry_run = bool(self.config.get("dry_run", False))
-            cache = bool(self.config.get("cache", True))
-            should_run = not (cache and self._has_output(output_dir))
+                if should_run or dry_run:
+                    self._prepare_run_dir(
+                        run_dir, options_dir, output_dir, pathnames,
+                        inst_lon=inst_lon, inst_lat=inst_lat, inst_z=inst.z,
+                        inst_id=component_id,
+                    )
+                if not dry_run and should_run:
+                    self._execute(run_dir, pathnames)
+                if not dry_run:
+                    footprint, fp_lons, fp_lats = self._read_raw_footprint(output_dir)
+                    rows.append(self._sample_at_sources(
+                        footprint, fp_lons, fp_lats, src_lons, src_lats
+                    ))
+                component_runs.append(str(run_dir))
 
-            if should_run or dry_run:
-                self._prepare_run_dir(
-                    run_dir, options_dir, output_dir, pathnames,
-                    inst_lon=inst_lon,
-                    inst_lat=inst_lat,
-                    inst_z=inst.z,
-                    inst_id=inst.id,
-                )
-
-            if not dry_run and should_run:
-                self._execute(run_dir, pathnames)
-
-            if not dry_run:
-                footprint, fp_lons, fp_lats = self._read_raw_footprint(output_dir)
-                G[i] = self._sample_at_sources(
-                    footprint, fp_lons, fp_lats, src_lons, src_lats
-                )
-
-            meta["runs"].append(
-                {"receptor": inst.id, "run_dir": str(run_dir), "output_dir": str(output_dir)}
-            )
+            if rows:
+                G[i] = np.mean(rows, axis=0)
+            meta["runs"].append({
+                "receptor": inst.id, "component_runs": component_runs,
+                "path_samples": len(component_runs),
+            })
 
         return UnitRunResult(g=G, meta=meta)
+
+    def _coordinate_transformer(self):
+        """Return the local-metre to WGS-84 transform for either domain API."""
+        projection = getattr(self.domain, "projection", None)
+        if projection is not None:
+            projection = projection() if callable(projection) else projection
+            if hasattr(projection, "to_lonlat"):
+                return projection.to_lonlat
+        if hasattr(self.domain, "crs") and self.domain.crs:
+            try:
+                from pyproj import Transformer
+            except ImportError as exc:
+                raise RuntimeError("pyproj is required to transform FLEXPART coordinates") from exc
+            transformer = Transformer.from_crs(
+                self.domain.crs, self.domain.crs_wgs84, always_xy=True
+            )
+            return transformer.transform
+        raise ValueError("FLEXPART backward mode needs a domain projection.")
+
+    def _sampling_points(self, inst: Instrument) -> list[tuple[str, float, float]]:
+        """Quadrature points along an OP beam, or the single point sensor site."""
+        if inst.params.operator_type != "line_integral" or inst.path_length_m <= 0.0:
+            return [(inst.id, inst.x, inst.y)]
+        n = max(1, int(self.config.get("path_samples", 8)))
+        bearing = np.deg2rad(float(inst.path_bearing_deg))
+        offsets = (np.arange(n) + 0.5) * float(inst.path_length_m) / n
+        return [
+            (f"{inst.id}_p{k:02d}",
+             float(inst.x + offset * np.sin(bearing)),
+             float(inst.y + offset * np.cos(bearing)))
+            for k, offset in enumerate(offsets)
+        ]
 
     # ── Unit conversion ───────────────────────────────────────────────────────
 

@@ -160,6 +160,127 @@ def build_from_prebuilt_operator(
 # --- end M2 ---
 
 
+def build_from_prebuilt_operator_with_instrument(
+    cfg: dict[str, Any], dispersion_up: Any, instrument_netcdf: Path,
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, list[str], str, dict[str, Any], int,
+    np.ndarray, np.ndarray, dict[str, Any],
+]:
+    """Pair an operator-mode Jacobian with pseudo-observations from instruments.
+
+    Operator Jacobians are written time-major/receptor-minor; instrument files
+    are flattened receptor-major/time-minor to match the standard flux path.
+    """
+    from netCDF4 import Dataset
+    from flux_helpers import find_var
+
+    jac = np.load(dispersion_up.file("jacobian"))
+    G_fine = np.asarray(jac["G"], dtype=float)
+    mapping = load_mapping(dispersion_up.file("basis_mapping"))
+    W = np.asarray(mapping.W, dtype=float)
+    counts = W.sum(axis=1)
+    if np.any(counts == 0) or G_fine.shape[1] != W.shape[1]:
+        raise ValueError("Operator Jacobian and basis mapping are incompatible")
+
+    with Dataset(instrument_netcdf) as ds:
+        y_name = find_var(ds, ("y_obs", "observation", "observations"))
+        if y_name is None:
+            raise KeyError("Instrument NetCDF must include y_obs/observation")
+        y_grid = np.asarray(ds.variables[y_name][:], dtype=float)
+        if y_grid.ndim != 2:
+            raise ValueError(f"Expected y_obs shape (time, instrument), got {y_grid.shape}")
+        n_time, n_inst = y_grid.shape
+        valid_name = find_var(ds, ("valid_mask",))
+        valid_grid = np.asarray(ds.variables[valid_name][:], dtype=bool) if valid_name else np.isfinite(y_grid)
+        variance_name = find_var(ds, ("noise_variance",))
+        if variance_name is None:
+            sigma = float(cfg.get("observations", {}).get("default_sigma", 1.0))
+            variance_grid = np.full_like(y_grid, sigma ** 2)
+        else:
+            variance_grid = np.asarray(ds.variables[variance_name][:], dtype=float)
+            if variance_grid.shape != y_grid.shape:
+                raise ValueError("noise_variance must have the same shape as y_obs")
+
+    # A backward LPDM footprint represents one window-integrated observation
+    # per instrument.  Reduce the LES pseudo-observation time series over the
+    # same window before pairing it with that Jacobian.
+    time_reduce = str(cfg.get("input", {}).get("time_reduce", "none")).lower()
+    if G_fine.shape[0] == n_inst and n_time > 1 and time_reduce == "mean":
+        usable = valid_grid & np.isfinite(y_grid) & np.isfinite(variance_grid)
+        counts_by_inst = usable.sum(axis=0)
+        if not np.all(counts_by_inst > 0):
+            raise ValueError("Cannot window-average an instrument with no valid LES samples")
+        weights = usable.astype(float)
+        y_grid = (np.where(usable, y_grid, 0.0).sum(axis=0) / counts_by_inst)[None, :]
+        variance_grid = (
+            (np.where(usable, variance_grid, 0.0).sum(axis=0) / counts_by_inst**2)[None, :]
+        )
+        valid_grid = np.ones((1, n_inst), dtype=bool)
+        n_time = 1
+
+    if G_fine.shape[0] != n_time * n_inst:
+        raise ValueError(
+            f"Operator has {G_fine.shape[0]} rows, but instrument file has "
+            f"{n_time} × {n_inst} observations. Set input.time_reduce: mean "
+            "for a window-integrated backward LPDM operator."
+        )
+    row_order = np.asarray([t * n_inst + i for i in range(n_inst) for t in range(n_time)])
+    G_coarse = G_fine[row_order] @ (W / counts[:, None]).T
+    y_flat = y_grid.T.reshape(-1)
+    variance_flat = variance_grid.T.reshape(-1)
+    valid = valid_grid.T.reshape(-1) & np.isfinite(y_flat) & np.isfinite(variance_flat)
+    if not np.any(valid) or np.any(variance_flat[valid] <= 0):
+        raise ValueError("Instrument observations must include valid, positive variances")
+
+    inv_cfg = cfg.get("inversion", {}) or {}
+    prior_cfg = inv_cfg.get("prior_covariance") or {}
+    n_coarse = W.shape[0]
+    x_prior = np.full(n_coarse, float(inv_cfg.get("prior_flux_kg_s", 0.0)))
+    prior_model = str(prior_cfg.get("model", "diagonal")).strip().lower()
+    L_B_m = float(prior_cfg.get("L_B_m", 0.0))
+    sigma_kg_s = float(prior_cfg.get("sigma_kg_s", 1.0e-6))
+    Sa = (build_prior_covariance(mapping, sigma_kg_s, L_B_m, model="exponential")
+          if prior_model == "gaussian_process"
+          else np.full(n_coarse, float(inv_cfg.get("prior_variance", sigma_kg_s ** 2))))
+    with Dataset(dispersion_up.file("truth_field")) as ds:
+        L_true_m = float(getattr(ds, "L_true_m", 0.0))
+        truth_fine = np.asarray(ds.variables["F_true"][:], dtype=float).ravel() * mapping.fine_cell_areas_m2
+
+    obs_meta = {
+        "mode": "instrument_netcdf", "input_mode": "instrument_netcdf",
+        "instrument_netcdf": str(instrument_netcdf), "y_variable": y_name,
+        "n_time": int(n_time), "n_flux_windows": 1,
+        "n_observations_total": int(y_flat.size), "n_observations_used": int(valid.sum()),
+    }
+    diagnostics = {
+        "L_true_m": L_true_m, "L_B_m": L_B_m,
+        "inverse_crime_flag": bool(L_B_m > 0 and abs(L_B_m - L_true_m) <= 1e-6 * max(L_B_m, L_true_m)),
+        "prior_covariance_model": prior_model, "n_fine_cells": int(W.shape[1]),
+        "n_coarse_cells": int(n_coarse), "observation_source": "instrument_operator",
+    }
+    total_only = bool(inv_cfg.get("total_only", False))
+    if total_only:
+        template_name = str(inv_cfg.get("total_template", "truth_shape"))
+        if template_name != "truth_shape":
+            raise ValueError("total_only currently requires total_template: truth_shape")
+        q_true = float(truth_fine.sum())
+        if q_true <= 0.0:
+            raise ValueError("Total source flux must be positive")
+        # Retain the heterogeneous source template but estimate its single
+        # field-wide amplitude Q.  This isolates total-flux observability
+        # from spatial-reconstruction skill while preserving a heterogeneous
+        # nature run and independent LES/AERMOD transport models.
+        G_coarse = (G_fine[row_order] @ (truth_fine / q_true)).reshape(-1, 1)
+        x_prior = np.array([float(inv_cfg.get("prior_total_flux_kg_s", 0.0))])
+        Sa = np.array([float(inv_cfg.get("prior_total_variance", 1.0e-4))])
+        names = ["Q_total"]
+    else:
+        names = [f"coarse_{i:05d}" for i in range(n_coarse)]
+    diagnostics["total_only"] = total_only
+    diagnostics["inversion_template"] = template_name if total_only else "coarse_gp"
+    return G_coarse[valid], y_flat[valid], variance_flat[valid], names, "concentration", obs_meta, 1, x_prior, Sa, diagnostics
+
+
 def build_from_receptors_mode(
     cfg: dict[str, Any],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], str, Path, dict[str, Any], int]:

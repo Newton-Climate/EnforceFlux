@@ -104,10 +104,12 @@ class FlexpartTransportOperator(ITransportOperator):
         # matching the forward operator. Requires per-source horizontal areas.
         source_areas = config.get("source_areas_m2")
         if source_areas is not None:
+            source_areas = np.asarray(source_areas, dtype=float)
+            if source_areas.ndim == 0:
+                source_areas = np.full(len(sources), float(source_areas))
             mixing_height_m = float(config.get("mixing_height_m", 100.0))
             g = FlexpartBackwardRunner.to_jacobian(
-                np.asarray(g, dtype=float),
-                np.asarray(source_areas, dtype=float),
+                np.asarray(g, dtype=float), source_areas,
                 mixing_height_m=mixing_height_m,
             )
             meta["units"] = "ng m-3 / (kg s-1)"

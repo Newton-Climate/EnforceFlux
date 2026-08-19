@@ -16,7 +16,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from enforceflux.meteo.record import MetRecord, MetSeries
+from enforceflux.instrument import Instrument
 from enforceflux.models.source import Source
 from enforceflux.transport.run_config import TransportRunConfig
 
@@ -125,10 +128,33 @@ def projected_sources(run: TransportRunConfig) -> list[Source]:
 
 
 def projected_receptors(run: TransportRunConfig) -> list[dict[str, Any]]:
-    """Run receptors as AERMOD receptor dicts in local metres."""
+    """Run receptors as AERMOD receptor dicts in local metres.
+
+    Open-path receptors are expanded into equally weighted samples that share
+    one group.  ``AermodModel`` reduces each group back to one path-averaged
+    observation row, preserving the common run-config receptor contract.
+    """
+    n_path = int(run.options.get("receptor_path_samples", 1))
     receptors = []
     for item in run.receptors:
         x, y = item.x_m, item.y_m
+        if n_path > 1 and item.path_length_m > 0.0:
+            bearing = np.deg2rad(float(item.path_bearing_deg))
+            # Match ``open_path.path_average``: x_m/y_m is the analyser at
+            # the start of the beam, not its midpoint.  Midpoints of equal
+            # subsegments provide an arc-length quadrature without endpoint
+            # double weighting.
+            offsets = (np.arange(n_path) + 0.5) * float(item.path_length_m) / n_path
+            for k, offset in enumerate(offsets):
+                receptors.append({
+                    "id": f"{item.id}_p{k:02d}",
+                    "x": float(x + offset * np.sin(bearing)),
+                    "y": float(y + offset * np.cos(bearing)),
+                    "z": item.altitude_m or run.domain.receptor_height_m,
+                    "group": item.id,
+                    "weight": 1.0 / n_path,
+                })
+            continue
         receptors.append(
             {
                 "id": item.id,
@@ -138,6 +164,28 @@ def projected_receptors(run: TransportRunConfig) -> list[dict[str, Any]]:
             }
         )
     return receptors
+
+
+def projected_instruments(run: TransportRunConfig) -> list[Instrument]:
+    """Adapt shared receptors into instruments for binary transport operators.
+
+    A path-bearing receptor is an open-path (OP) deployment; otherwise it is a
+    point sensor (PS).  The FLEXPART backward operator expands OP deployments
+    into beam quadrature points itself, so this function deliberately retains
+    the physical beam geometry instead of pre-expanding it.
+    """
+    return [
+        Instrument(
+            id=item.id,
+            tech_id="OP" if item.path_length_m > 0.0 else "PS",
+            x=float(item.x_m),
+            y=float(item.y_m),
+            z=float(item.altitude_m or run.domain.receptor_height_m),
+            path_length_m=float(item.path_length_m),
+            path_bearing_deg=float(item.path_bearing_deg),
+        )
+        for item in run.receptors
+    ]
 
 
 def projected_grid(run: TransportRunConfig) -> dict[str, float]:

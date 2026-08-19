@@ -106,7 +106,18 @@ def _run_operator(
     else:
         config, generated = _binary_model_config(run, series, run_dir)
         config["dry_run"] = dry_run
-        result = operator.build_forward_operator(sources, [], None, config)
+        if run.model == "flexpart":
+            # Preserve binary-model options that select the backward LPDM
+            # operator, its particle budget, and OP beam quadrature.
+            config.update(run.options)
+            config.setdefault("mode", "backward")
+            config.setdefault("base_run_dir", str(run_dir / "backward"))
+            config.setdefault("source_areas_m2", run.domain.spacing_m ** 2)
+            config.setdefault("mixing_height_m", run.domain.heights_m[0])
+            instruments = translate.projected_instruments(run)
+            result = operator.build_forward_operator(sources, instruments, run.domain, config)
+        else:
+            result = operator.build_forward_operator(sources, [], None, config)
         row_labels = tuple(r.id for r in run.receptors)
         return TransportRunResult(
             model=run.model,
@@ -134,12 +145,17 @@ def _run_operator(
 
 def _aermod_row_labels(run: TransportRunConfig, config: dict[str, Any]) -> tuple:
     """``(timestamp, receptor)`` rows when stacked, receptor ids otherwise."""
+    receptor_ids = []
+    for receptor in config["receptors"]:
+        label = receptor.get("group", receptor["id"])
+        if label not in receptor_ids:
+            receptor_ids.append(label)
     if config.get("reduce") != "stack":
-        return tuple(r.id for r in run.receptors)
+        return tuple(receptor_ids)
     return tuple(
-        (met.timestamp, receptor.id)
+        (met.timestamp, receptor_id)
         for met in config["met_objects"]
-        for receptor in run.receptors
+        for receptor_id in receptor_ids
     )
 
 
