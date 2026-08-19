@@ -1,0 +1,49 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E2 — Anchor-point "sweep".
+# ============================================================================
+#   enforceflux osse-sweep --config configs/source_heterogeneity_e2_les/sweep.yaml
+#
+# E2 is expensive (LES nature runs); the plan calls for a handful of ANCHOR
+# points on the E1 phase diagram rather than a full grid. Each anchor gets
+# multiple realizations to bound sampling error.
+#
+# NOTE: activates once M4 + M6 land (Waves 2 and 3 — Agents D and G).
+# ============================================================================
+
+stage: osse_sweep
+
+run:
+  name: source_heterogeneity_e2_les_sweep
+
+inputs: {}
+
+sweep:
+  base:
+    dispersion: configs/source_heterogeneity_e2_les/dispersion.yaml
+    flux:       configs/source_heterogeneity_e2_les/flux.yaml
+    analysis:   configs/source_heterogeneity_e2_les/analysis.yaml
+
+  # Anchor points (not a product grid); the sweep driver reads `anchors:` as
+  # a list of explicit override maps.
+  anchors:
+    - {dispersion.sources.config.covariance.L_m:  250, dispersion.sources.config.cv: 0.5, instrument.network: {kind: nested_space_filling, n:  8, seed: 0}}
+    - {dispersion.sources.config.covariance.L_m:  500, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n:  8, seed: 0}}
+    - {dispersion.sources.config.covariance.L_m: 1000, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n: 16, seed: 0}}
+    - {dispersion.sources.config.covariance.L_m: 1000, dispersion.sources.config.cv: 1.5, instrument.network: {kind: nested_space_filling, n: 16, seed: 0}}
+
+  # A few realizations per anchor to bound sampling error.
+  realizations:
+    dispersion.sources.config.seed: {range: [0, 5]}
+
+  cache:
+    reuse_H_across:
+      - dispersion.sources.config.seed
+      - dispersion.sources.config.cv
+      - dispersion.sources.config.covariance.L_m
+    h_cache_dir: runs/.h_cache
+
+  parallel:
+    workers: 2
+
+  output:
+    parquet: runs/source_heterogeneity_e2_les_sweep/sweep.parquet

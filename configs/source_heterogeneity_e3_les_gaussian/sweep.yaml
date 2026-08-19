@@ -1,0 +1,45 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E3 — Anchor-point "sweep".
+# ============================================================================
+#   enforceflux osse-sweep --config configs/source_heterogeneity_e3_les_gaussian/sweep.yaml
+#
+# Same anchor-point strategy as E2. E3's purpose is to expose the Gaussian-
+# inversion error floor (memo Fig 5), not to fill a phase diagram.
+#
+# NOTE: activates once M4 + M6 land (Waves 2 and 3 — Agents D and G).
+# ============================================================================
+
+stage: osse_sweep
+
+run:
+  name: source_heterogeneity_e3_les_gaussian_sweep
+
+inputs: {}
+
+sweep:
+  base:
+    dispersion: configs/source_heterogeneity_e3_les_gaussian/dispersion.yaml
+    flux:       configs/source_heterogeneity_e3_les_gaussian/flux.yaml
+    analysis:   configs/source_heterogeneity_e3_les_gaussian/analysis.yaml
+
+  anchors:
+    - {dispersion.sources.config.covariance.L_m:  250, dispersion.sources.config.cv: 0.5, instrument.network: {kind: nested_space_filling, n:  8, seed: 0}}
+    - {dispersion.sources.config.covariance.L_m:  500, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n:  8, seed: 0}}
+    - {dispersion.sources.config.covariance.L_m: 1000, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n: 16, seed: 0}}
+    - {dispersion.sources.config.covariance.L_m: 1000, dispersion.sources.config.cv: 1.5, instrument.network: {kind: nested_space_filling, n: 16, seed: 0}}
+
+  realizations:
+    dispersion.sources.config.seed: {range: [0, 5]}
+
+  cache:
+    reuse_H_across:
+      - dispersion.sources.config.seed
+      - dispersion.sources.config.cv
+      - dispersion.sources.config.covariance.L_m
+    h_cache_dir: runs/.h_cache
+
+  parallel:
+    workers: 2
+
+  output:
+    parquet: runs/source_heterogeneity_e3_les_gaussian_sweep/sweep.parquet
