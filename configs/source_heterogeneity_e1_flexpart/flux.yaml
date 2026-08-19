@@ -1,0 +1,19 @@
+# --- source-heterogeneity OSSE (M5) ---
+# Bayesian inversion for the FLEXPART E1 experiment. Consumes the
+# ``basis_mapping.npz`` artefact persisted by the M2 plugin.
+
+stage: flux
+run:
+  name: source_heterogeneity_e1_flexpart
+inputs:
+  dispersion: runs/source_heterogeneity_e1_flexpart/dispersion
+
+flux:
+  estimator: inversion
+  inversion:
+    engine: bayesian
+    prior_covariance:
+      model: gaussian_process   # gaussian_process | diagonal
+      sigma_kg_s: 1.0e-6
+      L_B_m: 800.0              # explicit — memo §5.4; do NOT default to L_true
+    r_cond: 1.0e-10

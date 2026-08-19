@@ -1,0 +1,19 @@
+# --- source-heterogeneity OSSE (M5) ---
+# Analysis stage: expand the coarse posterior back to the fine truth grid
+# via ``basis_mapping.npz`` and score against the truth field.
+
+stage: analysis
+run:
+  name: source_heterogeneity_e1_flexpart
+inputs:
+  dispersion: runs/source_heterogeneity_e1_flexpart/dispersion
+  flux:       runs/source_heterogeneity_e1_flexpart/flux
+
+analysis:
+  metrics:
+    - total_emission_error
+    - dfs
+    - chi2_per_dof
+    - prior_influence
+    - averaging_kernel_diag
+  epsilon: 0.20   # E_Q success threshold; matches memo §4

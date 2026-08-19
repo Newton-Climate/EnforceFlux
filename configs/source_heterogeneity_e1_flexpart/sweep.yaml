@@ -1,0 +1,29 @@
+# --- source-heterogeneity OSSE (M5) ---
+# Sweep configuration for the FLEXPART E1 experiment. Consumed by
+# ``enforceflux osse-sweep`` (Agent D, M4) which routes the ``flexpart``
+# transport branch through the ``DiskHCache`` (Agent F, M5) so that H is
+# recomputed only once per (met, layout, transport) group.
+
+sweep:
+  base:
+    dispersion: configs/source_heterogeneity_e1_flexpart/dispersion.yaml
+    flux:       configs/source_heterogeneity_e1_flexpart/flux.yaml
+    analysis:   configs/source_heterogeneity_e1_flexpart/analysis.yaml
+  grid:
+    dispersion.sources.config.covariance.L_m: [100, 500, 2000]
+    dispersion.sources.config.cv:            [0.25, 1.0]
+    dispersion.sources.config.seed:          {range: [0, 5]}
+    flux.inversion.prior_covariance.L_B_m:   [800.0]
+  cache:
+    # Everything in ``reuse_H_across`` is intentionally source-field-only —
+    # ``h_cache.transport_cache_key`` already excludes these keys, so a
+    # single FLEXPART Jacobian services the whole L×CV×seed slab.
+    reuse_H_across:
+      - dispersion.sources.config.seed
+      - dispersion.sources.config.cv
+      - dispersion.sources.config.covariance.L_m
+    disk_root: runs/.h_cache
+  parallel:
+    workers: 1   # macOS FLEXPART memory-note: single-threaded
+  output:
+    parquet: runs/sweep_e1_flexpart/sweep.parquet

@@ -1,0 +1,76 @@
+# --- source-heterogeneity OSSE (M5) ---
+# FLEXPART E1 experiment: LPDM transport for a heterogeneous truth field.
+#
+# The sources block uses the generator form (M2) so the FLEXPART Jacobian
+# spans the full fine truth grid; the M5 H-cache reuses this Jacobian across
+# every (L_m, cv, seed) triple in the sweep because those knobs sit under
+# ``sources.config.{covariance,cv,seed,basis}`` and are excluded from the
+# transport cache key by ``h_cache.transport_cache_key``.
+#
+# Kept small so the smoke test runs offline against the bundled FLEXPART
+# test met (2009-01-01 00Z–06Z). For a real E1 run swap ``meteo_dir`` /
+# ``available_file`` for the ERA5 RunDir produced by ``enforceflux met``.
+
+stage: dispersion
+run:
+  name: source_heterogeneity_e1_flexpart
+inputs: {}
+
+dispersion:
+  transport:
+    model: flexpart
+    mode: operator
+    start: "2009-01-01T00:00:00"
+    end:   "2009-01-01T06:00:00"
+
+  met:
+    records:
+      - {time: "2009-01-01T00:00", wind_speed_m_s: 3.0, wind_direction_deg: 270.0,
+         temperature_k: 280.0, mixing_height_m: 400.0,
+         friction_velocity_m_s: 0.25, sensible_heat_flux_w_m2: 20.0}
+      - {time: "2009-01-01T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 282.0, mixing_height_m: 500.0,
+         friction_velocity_m_s: 0.28, sensible_heat_flux_w_m2: 40.0}
+
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -4300.0
+    x_max:  4300.0
+    y_min: -4450.0
+    y_max:  4450.0
+    spacing_m: 100.0
+    receptor_height_m: 2.0
+    heights_m: [100.0]
+
+  # Log-Gaussian source field expanded by the M2 plugin. Small grid so the
+  # smoke test finishes quickly.
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 2.7777778e-2   # 100 kg/hr
+      grid: {nx: 8, ny: 8, dx_m: 100.0, origin_x_m: -400.0, origin_y_m: -400.0}
+      alt_m: 2.0
+      covariance: {model: exponential, L_m: 500.0}
+      cv: 1.0
+      seed: 42
+      basis: {coarsen: 2}   # 4x4 inversion cells over 8x8 truth
+      prior: {mean_kg_s_per_cell: 0.0}
+
+  receptors:
+    - {id: tower_n, x_m:    0.0, y_m:  650.0, alt_m: 3.0}
+    - {id: tower_e, x_m:  600.0, y_m:    0.0, alt_m: 3.0}
+
+  flexpart:
+    executable: ../../flexpart/src/FLEXPART
+    options_dir: ../../flexpart/options
+    meteo_dir: ../../flexpart/tests/testdata
+    available_file: ../../tests/fixtures/flexpart_meteo/AVAILABLE
+    n_particles: 10000
+    species_number: 24
+    output_step_seconds: 3600
+    sync_seconds: 900
+    # Project memory: macOS FLEXPART is flaky under threading. Force
+    # single-threaded execution.
+    env:
+      OMP_NUM_THREADS: 1
