@@ -1,0 +1,7 @@
+stage: analysis
+run: {name: TEMPLATE}
+inputs: {dispersion: ../../runs/TEMPLATE_OPERATOR/dispersion, flux: ../../runs/TEMPLATE/flux}
+analysis:
+  input: {kind: simulation, simulation_variable_names: [concentration]}
+  analysis: {prior_variance: 1.0e-8}
+  visualization: {enabled: false}

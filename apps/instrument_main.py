@@ -16,6 +16,7 @@ Usage:
 import argparse
 import csv
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -86,30 +87,32 @@ def _extract_2d_field(var, time_index: int, level_index: int, release_index: int
     return np.asarray(np.squeeze(arr), dtype=float)
 
 
-def _sample_nearest(field_2d, lons, lats, lon, lat) -> float:
-    """Nearest-grid sample. Handles 1-D or 2-D lat/lon coordinates.
+def _metric_instruments(instruments: list[Instrument], lons: np.ndarray, lats: np.ndarray,
+                        x: np.ndarray, y: np.ndarray) -> list[Instrument]:
+    """Project lon/lat deployments onto the metric axes of a canonical field."""
+    if lons.ndim != 2 or lats.ndim != 2 or lons.shape != lats.shape:
+        raise ValueError("Instrument sampling requires canonical 2-D longitude/latitude grids")
+    if lons.shape != (len(y), len(x)):
+        raise ValueError("Canonical geographic and metric grids have inconsistent shapes")
 
-    Canonical dispersion output ships 2-D lon/lat fields (y, x); native
-    FLEXPART output ships 1-D coordinate axes.
-    """
-    lons = np.asarray(lons)
-    lats = np.asarray(lats)
-    if lons.ndim == 2 and lats.ndim == 2 and lons.shape == lats.shape == field_2d.shape:
-        d2 = (lons - lon) ** 2 + (lats - lat) ** 2
-        flat = int(np.argmin(d2))
-        iy, ix = np.unravel_index(flat, field_2d.shape)
-        return float(field_2d[iy, ix])
-    if lons.ndim == 1 and lats.ndim == 1:
-        iy = int(np.argmin(np.abs(lats - lat)))
-        ix = int(np.argmin(np.abs(lons - lon)))
-        if field_2d.shape == (len(lats), len(lons)):
-            return float(field_2d[iy, ix])
-        if field_2d.shape == (len(lons), len(lats)):
-            return float(field_2d[ix, iy])
-    raise ValueError(
-        f"Unable to map concentration field to lat/lon axes. "
-        f"Field shape={field_2d.shape}, lat shape={lats.shape}, lon shape={lons.shape}"
-    )
+    # Longitude and latitude both vary along both axes when the LES grid is
+    # wind-aligned.  Fit the local affine inverse of the canonical 2-D grid;
+    # treating lon and lat as separable 1-D axes misplaces rotated domains.
+    xx, yy = np.meshgrid(x, y)
+    design = np.column_stack((lons.ravel(), lats.ravel(), np.ones(lons.size)))
+    targets = np.column_stack((xx.ravel(), yy.ravel()))
+    transform, *_ = np.linalg.lstsq(design, targets, rcond=None)
+    dx = float(np.min(np.abs(np.diff(x)))) if len(x) > 1 else 1.0
+    dy = float(np.min(np.abs(np.diff(y)))) if len(y) > 1 else 1.0
+    result = []
+    for inst in instruments:
+        xm, ym = np.array([inst.x, inst.y, 1.0]) @ transform
+        if not (x.min() - dx * 1e-3 <= xm <= x.max() + dx * 1e-3
+                and y.min() - dy * 1e-3 <= ym <= y.max() + dy * 1e-3):
+            raise ValueError(f"Instrument {inst.id!r} is outside the concentration grid")
+        result.append(replace(inst, x=float(np.clip(xm, x.min(), x.max())),
+                              y=float(np.clip(ym, y.min(), y.max()))))
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -146,7 +149,6 @@ def main() -> None:
 
     op_cfg = block.get("operator") or {}
     seed = int(op_cfg.get("random_seed", 42))
-    op = InstrumentOperator(instruments, rng=np.random.default_rng(seed))
 
     response_scale = np.array(
         [float(item.get("response_scale", 1.0)) for item in instruments_cfg],
@@ -184,11 +186,15 @@ def main() -> None:
         lon_name = _find_var(src, ("longitude", "lon", "xlon"))
         lat_name = _find_var(src, ("latitude", "lat", "ylat"))
         time_name = _find_var(src, ("time", "Times"))
-        if lon_name is None or lat_name is None:
-            raise KeyError("Upstream NetCDF has no longitude / latitude coordinate variables")
+        if lon_name is None or lat_name is None or "x" not in src.variables or "y" not in src.variables:
+            raise KeyError("Upstream NetCDF must have canonical x/y and longitude/latitude coordinates")
 
         lons = np.asarray(src.variables[lon_name][:], dtype=float)
         lats = np.asarray(src.variables[lat_name][:], dtype=float)
+        x_axis = np.asarray(src.variables["x"][:], dtype=float)
+        y_axis = np.asarray(src.variables["y"][:], dtype=float)
+        field_instruments = _metric_instruments(instruments, lons, lats, x_axis, y_axis)
+        op = InstrumentOperator(field_instruments, rng=np.random.default_rng(seed))
         conc_var = src.variables[vname]
 
         time_size = 1
@@ -202,13 +208,13 @@ def main() -> None:
         valid_mask = np.zeros_like(sampled, dtype=bool)
         noise_var = np.zeros_like(sampled)
 
+        fields = np.stack([
+            _extract_2d_field(conc_var, ti, level_index, release_index)
+            for ti in range(time_size)
+        ])
+        sampled[:, :] = op.sample_fields(fields, x_axis, y_axis)
         for ti in range(time_size):
-            field = _extract_2d_field(conc_var, ti, level_index, release_index)
-            row = np.array(
-                [_sample_nearest(field, lons, lats, inst.x, inst.y) for inst in instruments],
-                dtype=float,
-            )
-            sampled[ti, :] = row
+            row = sampled[ti]
             g_t = (row * response_scale).reshape(len(instruments), 1)
             result = op.simulate_observations(g_t, np.array([1.0], dtype=float))
             y_clean[ti, :] = result.y_clean

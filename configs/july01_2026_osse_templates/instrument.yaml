@@ -1,0 +1,8 @@
+stage: instrument
+run: {name: TEMPLATE}
+inputs: {dispersion: ../../runs/TEMPLATE_NATURE/dispersion}
+instrument:
+  level_index: 0
+  release_index: 0
+  operator: {random_seed: 1000}
+  instruments: []

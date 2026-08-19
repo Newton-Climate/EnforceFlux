@@ -1,0 +1,14 @@
+stage: flux
+run: {name: TEMPLATE}
+inputs: {dispersion: ../../runs/TEMPLATE_OPERATOR/dispersion, obs: ../../runs/TEMPLATE/instrument}
+flux:
+  input: {mode: instrument_netcdf, level_index: 0, time_reduce: mean}
+  observations: {default_sigma: 0.01}
+  inversion:
+    method: linear
+    prior_flux_kg_s: 0.0
+    prior_covariance: {model: gaussian_process, sigma_kg_s: 0.01, L_B_m: 800.0}
+    prior_variance: 0.0001
+    total_only: true
+    total_template: truth_shape
+    prior_total_variance: 0.0001
