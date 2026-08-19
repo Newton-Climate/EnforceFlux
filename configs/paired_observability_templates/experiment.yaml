@@ -11,7 +11,7 @@ network:
   downwind_x_m: 1400.0
   crosswind_min_m: -600.0
   crosswind_max_m: 600.0
-  beam_length_m: 400.0
+  beam_length_m: 500.0
   beam_quadrature_points: 8
   layout_jitter_m: 30.0
 inversion:
@@ -20,11 +20,10 @@ inversion:
   equivalence_error_ratio: [0.90, 1.10]
   gp_coarsen: 8
   gp_length_m: 800.0
-  gp_prior_total_kg_s: 0.020
-  gp_sigma_per_cell_kg_s: 0.003
+  gp_prior_total_kg_s: 0.0
+  gp_sigma_per_cell_kg_s: 0.03
 meteorology:
   cases:
     - id: july01_2026
       directory: ../../runs/sacramento_valley_2026_july01_point/met
       nature_suffix: ''
-

@@ -1,6 +1,6 @@
 # Paired point/OP observability experiment
 
-This experiment compares point sensors with 400 m open-path beams using the
+This experiment compares point sensors with 500 m open-path beams using the
 same network centres. Each point is located at the midpoint of its paired OP
 beam, and every OP beam is perpendicular to the LES wind direction.
 

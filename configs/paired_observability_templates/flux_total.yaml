@@ -5,12 +5,11 @@ flux:
   input: {mode: instrument_netcdf, level_index: 0, time_reduce: mean}
   observations: {default_sigma: 0.01}
   inversion:
-    method: linear
+    method: nonnegative
     prior_flux_kg_s: 0.0
     prior_covariance: {model: gaussian_process, sigma_kg_s: 0.01, L_B_m: 800.0}
-    prior_variance: 0.0001
+    prior_variance: 0.01
     total_only: true
     total_template: uniform
     prior_total_flux_kg_s: 0.0
-    prior_total_variance: 0.0001
-
+    prior_total_variance: 0.01

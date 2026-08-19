@@ -144,7 +144,8 @@ def run_cell(
     n: int, technology: str, tmp: Path,
 ) -> None:
     nature = nature_name(spec, L, cv, source_seed)
-    tag = f"l{L}_cv{cv_slug(cv)}_s{source_seed}_layout{layout_seed}_n{n}_{technology}"
+    beam_length = int(round(float(spec["network"]["beam_length_m"])))
+    tag = f"l{L}_cv{cv_slug(cv)}_s{source_seed}_layout{layout_seed}_n{n}_b{beam_length}_{technology}"
     base = f"paired_observability_{tag}"
     operator_name = f"{base}_operator"
     instruments, receptors, bearing, beam_bearing = paired_geometry(
@@ -175,7 +176,7 @@ def run_cell(
     flex["path_samples"] = int(spec["network"]["beam_quadrature_points"])
     flex["base_run_dir"] = str(
         ROOT / "runs/paired_observability_flexpart_cache" / technology /
-        f"layout{layout_seed}"
+        f"beam{beam_length}_layout{layout_seed}"
     )
 
     stage("instrument", inst, tmp)
@@ -243,7 +244,8 @@ def summarize(spec: dict) -> None:
     ]
     rows = []
     for L, cv, source_seed, layout_seed, n, technology in cells(spec):
-        tag = f"l{L}_cv{cv_slug(cv)}_s{source_seed}_layout{layout_seed}_n{n}_{technology}"
+        beam_length = int(round(float(spec["network"]["beam_length_m"])))
+        tag = f"l{L}_cv{cv_slug(cv)}_s{source_seed}_layout{layout_seed}_n{n}_b{beam_length}_{technology}"
         for mode in spec["experiment"]["inversion_modes"]:
             run_name = f"paired_observability_{tag}_{mode}"
             flux_path = ROOT / "runs" / run_name / "flux/summary.json"
@@ -276,7 +278,7 @@ def summarize(spec: dict) -> None:
                 "success": int(error <= float(spec["inversion"]["success_error_fraction"])),
             })
     with output.open("w", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer = csv.DictWriter(stream, fieldnames=fields, lineterminator="\n")
         writer.writeheader(); writer.writerows(rows)
     print(f"Wrote {len(rows)} completed inversions to {output}")
 
@@ -330,7 +332,9 @@ def summarize(spec: dict) -> None:
     equality_output = ROOT / "notebooks/hetero_experiments/paired_observability_equality.csv"
     if equality_rows:
         with equality_output.open("w", newline="") as stream:
-            writer = csv.DictWriter(stream, fieldnames=list(equality_rows[0]))
+            writer = csv.DictWriter(
+                stream, fieldnames=list(equality_rows[0]), lineterminator="\n"
+            )
             writer.writeheader(); writer.writerows(equality_rows)
     print(f"Wrote {len(equality_rows)} paired equality cells to {equality_output}")
 
@@ -353,7 +357,9 @@ def summarize(spec: dict) -> None:
                     })
     required_output = ROOT / "notebooks/hetero_experiments/paired_observability_required_network.csv"
     with required_output.open("w", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(required_rows[0]))
+        writer = csv.DictWriter(
+            stream, fieldnames=list(required_rows[0]), lineterminator="\n"
+        )
         writer.writeheader(); writer.writerows(required_rows)
     print(f"Wrote required-network summary to {required_output}")
 

@@ -76,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    from enforceflux.inversion import oe_from_linear, optimize_oe
+    from enforceflux.inversion import bounded_bayesian_linear_inversion, oe_from_linear, optimize_oe
     from enforceflux.inversion.bayesian import bayesian_linear_inversion
     from enforceflux.runs import load_stage_config, open_run_dir, read_upstream
     from flux_helpers import build_prior
@@ -85,6 +85,7 @@ def main() -> None:
         build_from_receptors_mode,
         # --- source-heterogeneity OSSE (M2) ---
         build_from_prebuilt_operator,
+        build_from_prebuilt_operator_with_instrument,
         # --- end M2 ---
     )
 
@@ -127,13 +128,11 @@ def main() -> None:
         )
 
     # --- source-heterogeneity OSSE (M2) ---
-    if prebuilt_operator:
+    if prebuilt_operator and input_mode == "prebuilt_operator":
         input_mode = "prebuilt_operator"
     # --- end M2 ---
 
-    if prebuilt_operator:
-        obs_up = None
-    elif input_mode == "instrument_netcdf":
+    if input_mode == "instrument_netcdf":
         if "obs" not in stage_cfg.inputs:
             raise ValueError(
                 f"{stage_cfg.yaml_path}: `inputs.obs:` is required when "
@@ -155,7 +154,15 @@ def main() -> None:
 
     # --- source-heterogeneity OSSE (M2) ---
     prebuilt_meta: dict = {}
-    if input_mode == "prebuilt_operator":
+    if prebuilt_operator and input_mode == "instrument_netcdf":
+        (
+            G, y_obs, Se, source_names, vname, obs_meta, n_flux,
+            x_prior, Sa, prebuilt_meta,
+        ) = build_from_prebuilt_operator_with_instrument(
+            legacy_cfg, dispersion_up, obs_up.file("obs"),
+        )
+        n_sources = len(source_names)
+    elif input_mode == "prebuilt_operator":
         (
             G, y_obs, Se, source_names, vname, obs_meta, n_flux,
             x_prior, Sa, prebuilt_meta,
@@ -176,8 +183,8 @@ def main() -> None:
 
     inv_cfg = legacy_cfg["inversion"]
     method = str(inv_cfg.get("method", "linear")).strip().lower()
-    if method not in {"linear", "nonlinear"}:
-        raise ValueError("flux.inversion.method must be 'linear' or 'nonlinear'")
+    if method not in {"linear", "nonlinear", "nonnegative"}:
+        raise ValueError("flux.inversion.method must be 'linear', 'nonlinear', or 'nonnegative'")
 
     # --- source-heterogeneity OSSE (M8) ---
     g_beta, sigma_beta, background_meta = _build_background_nuisance(
@@ -185,7 +192,15 @@ def main() -> None:
     )
     # --- end source-heterogeneity OSSE (M8) ---
 
-    if method == "linear":
+    if method == "nonnegative":
+        if g_beta is not None:
+            raise NotImplementedError("nonnegative inversion does not support background nuisance states")
+        result = bounded_bayesian_linear_inversion(
+            g=np.asarray(G, dtype=float), y=y_obs,
+            x_prior=np.asarray(x_prior, dtype=float), s_a=Sa, r=Se,
+            source_names=source_names,
+        )
+    elif method == "linear":
         # --- source-heterogeneity OSSE (M8) ---
         if g_beta is not None:
             result = bayesian_linear_inversion(
