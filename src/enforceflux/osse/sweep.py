@@ -345,12 +345,27 @@ def run_sweep(
         ((base_disp.get("dispersion") or {}).get("transport") or {}).get("model", "aermod")
     ).strip().lower()
 
-    # --- M5 flexpart hook (Agent F) ---
+    # --- source-heterogeneity OSSE (M5) ---
+    # FLEXPART is invoked in-process by the shared dispersion driver, so the
+    # sweep branch only needs to (a) set the macOS ops guard from the memory
+    # note before any dispersion runs, and (b) switch the default in-memory
+    # H-cache to the disk-backed one keyed on the transport-only config subset.
     if transport == "flexpart":
-        raise NotImplementedError(
-            "flexpart branch is Agent F's M5 territory"
-        )
-    # --- end M5 hook ---
+        import os
+        os.environ.setdefault("OMP_NUM_THREADS", "1")
+        if isinstance(hcache, InMemoryHCache):
+            from enforceflux.osse.h_cache import DiskHCache
+            disk_root_cfg = (
+                (yaml.safe_load(sweep_cfg.base_dispersion.read_text()) or {})
+                .get("sweep", {})
+                .get("cache", {})
+                .get("disk_root")
+            )
+            disk_root = Path(disk_root_cfg) if disk_root_cfg else (
+                sweep_cfg.outputs_root / ".h_cache"
+            )
+            hcache = DiskHCache(root=disk_root)
+    # --- end M5 ---
 
     scratch_root = Path(scratch_root or (sweep_cfg.outputs_root / "_scratch"))
     scratch_root.mkdir(parents=True, exist_ok=True)
