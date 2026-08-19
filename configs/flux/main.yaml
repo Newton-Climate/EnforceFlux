@@ -1,140 +1,97 @@
 # ============================================================================
-# Flux inversion — apps/flux_main.py
+# Flux inversion — flux stage
 # ============================================================================
-#   python apps/flux_main.py --config configs/flux/main.yaml
+#   enforceflux flux --config configs/flux/main.yaml
 #
-# Builds the transport matrix G from a simulation NetCDF and solves for the
-# posterior fluxes by optimal estimation:
+# Builds the transport matrix G from the upstream dispersion RunDir and solves
+# for the posterior fluxes by optimal estimation:
 #
 #     x_hat = x_a + S_a G^T (G S_a G^T + S_e)^-1 (y - G x_a)
-#
-# Every section below is one term in that equation: `receptors`/`input` build
-# G, `observations` supply y and S_e, `inversion` supplies x_a and S_a.
 #
 # TIME-RESOLVED: the state x is an emission-rate TIME SERIES per source, one
 # window per simulation timestep. The simulation is a sustained unit-rate
 # release, so its per-timestep field is a transport STEP response; G is the
-# block-Toeplitz convolution of the first-differenced (impulse) kernel, mapping
-# x_j(k) to concentration y_i(t) = sum_j sum_{k<=t} h_ij(t-k) x_j(k).
-# Observations (`observed`, y_obs) must therefore be time series, not scalars.
+# block-Toeplitz convolution of the first-differenced (impulse) kernel.
 #
-# Relative paths resolve against THIS FILE's directory.
+# ── STAGE INPUTS/OUTPUTS ────────────────────────────────────────────────────
+# Consumes: dispersion.concentration_field   (always)
+#           obs.obs                          (only when input.mode = instrument_netcdf)
+# Produces: flux.summary    (summary.json)
+#           flux.matrices   (matrices.npz)
+#           flux.posterior  (posterior.csv)
+#
+# Run the two upstream stages first, e.g.:
+#     enforceflux dispersion --config configs/dispersion/single_source_aermod.yaml
+#     enforceflux instrument --config configs/instrument/main.yaml
+# then edit the inputs paths below (or reuse this pair verbatim).
 # ============================================================================
 
+stage: flux
 
-# ─── input: where G comes from ──────────────────────────────────────────────
-input:
-  # simulation_receptors — sample the simulation field at the `receptors`
-  #                        listed below; observations come from this file.
-  # instrument_netcdf    — take G, y and the noise variance from an
-  #                        apps/instrument_main.py output, i.e. include the
-  #                        instrument operator and its real noise model.
-  #                        Preferred for a realistic OSSE; the `receptors`
-  #                        section is then ignored.
-  mode: simulation_receptors
+run:
+  name: main
 
-  simulation_netcdf: ../outputs/simulation_main.nc
-  # Required when mode=instrument_netcdf:
-  # instrument_netcdf: ../outputs/instrument_main.nc
+inputs:
+  # Dispersion RunDir supplies concentration_field for building G.
+  dispersion: ../../runs/single_source_aermod/dispersion
+  # Obs RunDir (from instrument or obs stage) supplies y + noise variance
+  # when flux.input.mode = instrument_netcdf. Omit for simulation_receptors mode.
+  obs: ../../runs/main/instrument
 
-  variable_name: ch4_mixing_ratio
-  level_index: 0    # vertical level; 0 = surface
-  # The whole simulation time axis is used to build the convolution kernel — the
-  # flux state has one window per simulation timestep. When mode=instrument_netcdf
-  # the instrument series may run longer than the simulation; lags past the kernel
-  # length contribute zero (finite transport memory), so no timestep reuse.
+flux:
 
+  # ─── input: where G, y and noise variance come from ───────────────────────
+  input:
+    # simulation_receptors — sample the dispersion field at the `receptors:`
+    #                        listed below; observations come from this file.
+    # instrument_netcdf    — take y and the noise variance from `inputs.obs`,
+    #                        i.e. include the instrument operator and its real
+    #                        noise model. Preferred for realistic OSSEs;
+    #                        `receptors:` is then ignored.
+    mode: instrument_netcdf
 
-# ─── receptors: the rows of G ───────────────────────────────────────────────
-# Observation locations. Used ONLY when input.mode=simulation_receptors.
-# For observations.mode=provided, `observed` is a TIME SERIES whose length must
-# equal the simulation's number of timesteps; `sigma` is a scalar (constant in
-# time) or a matching-length list. A bare scalar `observed` is broadcast to a
-# constant series — rarely what you want for a time-resolved inversion.
-receptors:
-  - id: rec_west
-    lon: -122.2
-    lat: 38.9
-    observed: [1.2, 1.3, 1.5, 1.6, 1.5]   # per-timestep measurements entering y
-    sigma: 0.2                             # 1-sigma; overrides default_sigma below
+    # variable_name: concentration    # [opt] auto-detects canonical + FLEXPART names
+    level_index: 0
 
-  - id: rec_central
-    lon: -121.7
-    lat: 39.1
-    observed: [1.5, 1.6, 1.8, 1.9, 1.7]
-    sigma: 0.2
+  # ─── receptors: only used when input.mode = simulation_receptors ──────────
+  # For observations.mode = provided, `observed` is a TIME SERIES whose length
+  # must equal the dispersion NetCDF's number of timesteps; `sigma` is a scalar
+  # (constant in time) or a matching-length list.
+  # receptors:
+  #   - id: rec_north
+  #     lon: -121.75
+  #     lat: 39.156
+  #     observed: [1.2, 1.3, 1.5, 1.6]
+  #     sigma: 0.2
 
-  - id: rec_north
-    lon: -121.4
-    lat: 39.8
-    observed: [1.0, 1.1, 1.2, 1.2, 1.1]
-    sigma: 0.2
+  # ─── observations: default noise floor for instrument mode ────────────────
+  observations:
+    default_sigma: 0.2
 
+  # ─── inversion: prior (x_a, S_a) and solver ───────────────────────────────
+  inversion:
+    # linear    — closed-form OE (oe_from_linear). Correct when observations
+    #             are linear in flux, which they are for a passive tracer.
+    # nonlinear — iterative optimize_oe with F(x) = G @ x. Slower; same answer
+    #             for a linear forward.
+    method: linear
 
-# ─── observations: y and the noise covariance S_e ───────────────────────────
-observations:
-  # provided             — use the `observed`/`sigma` values above (real or
-  #                        externally generated data).
-  # synthetic_from_truth — generate y = G @ truth_flux, optionally with noise.
-  #                        This is the OSSE path: you know the answer, so you
-  #                        can measure how well the network recovers it.
-  #
-  # When input.mode=instrument_netcdf, y and the noise variance come from that
-  # file and this section only supplies default_sigma as a fallback.
-  mode: provided
+    # Prior flux: scalar (all sources/windows), length n_sources, or an
+    # (n_sources x n_flux) nested list.
+    prior_flux_kg_s: 0.0
 
-  # Fallback 1-sigma for any receptor without its own `sigma`.
-  default_sigma: 0.2
+    # Prior covariance S_a. Precedence:
+    #   1. prior_covariance_diag   — per-source variances (length n_sources
+    #                                or (n_sources x n_flux))
+    #   2. prior_variance          — scalar; same for every source
+    #   3. prior_sigma_fraction * |x_a|  — degenerates to zero when x_a = 0,
+    #                                which would pin the solution to the prior.
+    prior_variance: 1.0e-8
+    prior_sigma_fraction: 0.5
 
-  # Used only when mode=synthetic_from_truth. Scalar (all sources/windows),
-  # length n_sources (constant in time), or an (n_sources x n_flux) nested list
-  # for a time-varying truth. y = G @ truth is synthesized on the same time base.
-  # Set add_noise: false to test the inversion's algebra in isolation; leave it
-  # true for an honest recovery test — noiseless data flatters the result.
-  # truth_flux_kg_s: [[0.0, 0.0, 2.0, 2.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0]]
-  # add_noise: true
-  # random_seed: 42
-
-
-# ─── inversion: the prior (x_a, S_a) and the solver ─────────────────────────
-inversion:
-  # linear    — closed-form OE (oe_from_linear). Correct when observations are
-  #             linear in flux, which they are for a passive tracer.
-  # nonlinear — iterative optimize_oe with F(x)=G@x. Only needed for a
-  #             genuinely nonlinear forward model; slower, same answer here.
-  method: linear
-
-  # Prior flux x_a: scalar (all sources/windows), length n_sources (constant in
-  # time), or an (n_sources x n_flux) nested list for a time-varying prior.
-  prior_flux_kg_s: 0.0
-
-  # Prior covariance S_a — the single most consequential choice here, since it
-  # sets how far the solution may move from the prior. Precedence:
-  #   1. prior_covariance_diag            — per-source variances (length
-  #                                         n_sources, or (n_sources x n_flux))
-  #   2. prior_variance (scalar)         — same variance for every source
-  #   3. prior_sigma_fraction * |x_a|    — fractional; NOTE this degenerates to
-  #                                        zero variance when prior_flux is 0,
-  #                                        which would pin the solution to the
-  #                                        prior. Hence the explicit
-  #                                        prior_variance below.
-  prior_variance: 1.0e-8
-  prior_sigma_fraction: 0.5
-  # prior_covariance_diag: [1.0e-8, 1.0e-8, 1.0e-8]
-
-  # Nonlinear solver settings — used only when method=nonlinear.
-  n_iter: 20          # max Levenberg-Marquardt iterations
-  lam0: 1.0e-3        # initial LM damping
-  lam_factor: 10.0    # damping increase/decrease factor per step
-  eps: 1.0e-4         # convergence tolerance
-  fd_step: 1.0e-5     # finite-difference step for the Jacobian
-
-
-# ─── output ─────────────────────────────────────────────────────────────────
-output:
-  summary_json: ../outputs/flux_inversion_summary.json   # posterior + diagnostics
-  matrices_npz: ../outputs/flux_inversion_matrices.npz   # G, S_a, S_e, gain,
-                                                         #   averaging kernel
-  posterior_csv: ../outputs/flux_posterior.csv           # one row per
-                                                         #   (source, flux_window):
-                                                         #   estimate + uncertainty
+    # Nonlinear solver knobs (only used when method = nonlinear).
+    n_iter: 20
+    lam0: 1.0e-3
+    lam_factor: 10.0
+    eps: 1.0e-4
+    fd_step: 1.0e-5
