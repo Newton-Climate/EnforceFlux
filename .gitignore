@@ -11,6 +11,8 @@ build/
 # package or tests/runs test module — those live under src/ and tests/).
 /outputs/
 /runs/
+/analysis/
+/data/
 
 # macOS
 .DS_Store
