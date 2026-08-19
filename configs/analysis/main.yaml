@@ -1,82 +1,74 @@
 # ============================================================================
-# Analysis and diagnostics — apps/analysis_main.py
+# Analysis stage — information-content diagnostics + plots.
 # ============================================================================
-#   python apps/analysis_main.py --config configs/analysis/main.yaml
+#   enforceflux analysis --config configs/analysis/main.yaml
 #
-# Reads either a raw simulation field or an instrument observation file and
-# produces information-content diagnostics (averaging kernel, DFS, posterior
-# uncertainty) plus optional plots.
+# Reads either an instrument RunDir (preferred — gives DFS, averaging kernel,
+# posterior uncertainty from the operator + noise model) or a dispersion RunDir
+# (simulation-only diagnostics), and writes a summary bundle under
+# runs/<run.name>/analysis/.
 #
-# Relative paths resolve against THIS FILE's directory.
+# ── STAGE INPUTS/OUTPUTS ────────────────────────────────────────────────────
+# Consumes: instrument.obs                (preferred, full diagnostics)
+#           dispersion.concentration_field (fallback, sim-only)
+# Produces: analysis.summary  (summary.json)
+#           analysis.plot_*   (plots/*.png, when visualization.enabled)
+#
+# Run the upstream stage(s) first, e.g.:
+#     enforceflux dispersion --config configs/dispersion/single_source_aermod.yaml
+#     enforceflux instrument --config configs/instrument/main.yaml
+# then either edit the inputs paths below or reuse this pair verbatim.
 # ============================================================================
 
+stage: analysis
 
-# ─── input: what to analyse ─────────────────────────────────────────────────
-input:
-  # Either a simulation field (apps/dispersion_main.py)
-  # or an instrument file (apps/instrument_main.py). The two carry different
-  # variables, hence `kind` below.
-  netcdf: ../outputs/instrument_main.nc
+run:
+  name: main
 
-  # auto        — detect from the file's variables (recommended).
-  # simulation  — force: treat as a raw concentration field.
-  # instrument  — force: expect observations, H·G and R.
-  # Only an instrument file supports the information-content diagnostics, since
-  # they need the observation operator and noise covariance.
-  kind: auto
+inputs:
+  # Preferred: full info-content diagnostics come from the instrument stage.
+  instrument: ../../runs/main/instrument
+  # Fallback (used when `instrument` is absent):
+  # dispersion: ../../runs/single_source_aermod/dispersion
 
-  # Candidate variable names tried, in order, when reading a simulation field.
-  # Extend this if your field uses a different name.
-  simulation_variable_names: [ch4_mixing_ratio, ch4_concentration]
-
-
-# ─── analysis: prior assumptions ────────────────────────────────────────────
-# The prior covariance S_a. Information content is measured RELATIVE to the
-# prior, so these values set what "informative" means: an over-tight prior
-# makes any network look uninformative, a loose one flatters it.
 analysis:
-  # Scalar variance applied to every source, used when no explicit diagonal is
-  # given below.
-  prior_variance: 1.0
 
-  # Per-source prior variances (length = n_sources). Takes precedence over
-  # prior_variance when present — use it when sources differ in how well they
-  # are known a priori.
-  # prior_covariance_diag: [1.0, 1.0, 1.0]
+  input:
+    # auto        — detect from the file's variables (recommended).
+    # simulation  — force: treat as a raw concentration field.
+    # instrument  — force: expect observations, H·G and R.
+    kind: auto
 
+    # Candidate variable names tried in order when reading a raw dispersion
+    # field. Extend if your field uses a different name.
+    simulation_variable_names: [concentration, ch4_mixing_ratio, ch4_concentration]
 
-# ─── visualization ──────────────────────────────────────────────────────────
-visualization:
-  enabled: true
-  directory: ../outputs/analysis_plots
+  # Prior covariance S_a. Information content is measured RELATIVE to the
+  # prior, so these values set what "informative" means.
+  analysis:
+    prior_variance: 1.0
+    # prior_covariance_diag: [1.0, 1.0, 1.0]   # per-source override
 
-  # Which slice to render for field plots.
-  time_index: 0
-  level_index: 0
-  release_index: 0
+  visualization:
+    enabled: true
+    # Plots land under {run_dir}/plots/; the `directory:` key from the legacy
+    # config is now injected by the driver.
 
-  # Wind rose from a met file — the distribution of wind directions over the
-  # window, which is the single best predictor of which sources a fixed network
-  # can actually see.
-  wind_rose:
-    enabled: false
+    # Which slice to render for field plots.
+    time_index: 0
+    level_index: 0
+    release_index: 0
 
-    # Met file to read. If omitted, uses input.netcdf above — which only works
-    # when that file actually carries wind components.
-    # netcdf: ../runs/sacramento_valley_2020/meteo_july/ERA5_20200701.nc
-
-    u_var: u10             # eastward wind variable name
-    v_var: v10             # northward wind variable name
-    n_dir_bins: 16         # direction sectors (16 = 22.5 deg each)
-    calm_threshold: 0.2    # m/s below which a sample counts as calm and is
-                           #   excluded — direction is meaningless in calm air
-    title: Wind Rose
-    cmap: viridis
-    output_name: wind_rose.png
-
-
-# ─── output ─────────────────────────────────────────────────────────────────
-output:
-  # Machine-readable diagnostics (DFS, posterior uncertainty, per-source
-  # information) for downstream comparison across network designs.
-  summary_json: ../outputs/analysis_summary.json
+    # Wind rose from a met file — the distribution of wind directions over
+    # the window; often the single best predictor of which sources a fixed
+    # network can actually see.
+    wind_rose:
+      enabled: false
+      # netcdf: <path to a met file with u10 / v10 vars>
+      u_var: u10
+      v_var: v10
+      n_dir_bins: 16
+      calm_threshold: 0.2
+      title: Wind Rose
+      cmap: viridis
+      output_name: wind_rose.png
