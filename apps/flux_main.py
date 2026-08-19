@@ -31,6 +31,42 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 
+# --- source-heterogeneity OSSE (M8) ---
+def _build_background_nuisance(bg_cfg, block, obs_meta, n_obs, input_mode):
+    """Return (g_beta, sigma_beta, meta) for the flux.inversion.background block."""
+    if not bg_cfg:
+        return None, None, {"model": "none"}
+    model = str(bg_cfg.get("model", "none")).strip().lower()
+    if model == "none":
+        return None, None, {"model": "none"}
+    sigma = float(bg_cfg.get("sigma"))
+    if model == "constant":
+        g_beta = np.ones((n_obs, 1), dtype=float)
+        return g_beta, np.array([sigma], dtype=float), {"model": "constant", "sigma": sigma, "n_beta": 1}
+    if model == "gradient":
+        if input_mode != "simulation_receptors":
+            raise NotImplementedError(
+                "flux.inversion.background.model=gradient requires simulation_receptors input mode"
+            )
+        receptors = block.get("receptors") or []
+        if not receptors:
+            raise ValueError("gradient background requires receptors[] with lon/lat")
+        n_time = int(obs_meta.get("n_time", n_obs // len(receptors)))
+        lons = np.array([float(r["lon"]) for r in receptors], dtype=float)
+        lats = np.array([float(r["lat"]) for r in receptors], dtype=float)
+        x_obs = np.repeat(lons, n_time)
+        y_obs = np.repeat(lats, n_time)
+        if x_obs.size != n_obs:
+            raise ValueError(
+                f"gradient background expected {n_obs} obs, receptors*time gave {x_obs.size}"
+            )
+        g_beta = np.stack([np.ones(n_obs), x_obs, y_obs], axis=1)
+        sigma_arr = np.full(3, sigma, dtype=float)
+        return g_beta, sigma_arr, {"model": "gradient", "sigma": sigma, "n_beta": 3}
+    raise ValueError(f"flux.inversion.background.model must be constant|gradient|none, got {model!r}")
+# --- end source-heterogeneity OSSE (M8) ---
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build G from dispersion output and run OE flux inversion"
@@ -41,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     from enforceflux.inversion import oe_from_linear, optimize_oe
+    from enforceflux.inversion.bayesian import bayesian_linear_inversion
     from enforceflux.runs import load_stage_config, open_run_dir, read_upstream
     from flux_helpers import build_prior
     from flux_inputs import (
@@ -142,10 +179,26 @@ def main() -> None:
     if method not in {"linear", "nonlinear"}:
         raise ValueError("flux.inversion.method must be 'linear' or 'nonlinear'")
 
+    # --- source-heterogeneity OSSE (M8) ---
+    g_beta, sigma_beta, background_meta = _build_background_nuisance(
+        inv_cfg.get("background"), block, obs_meta, len(y_obs), input_mode
+    )
+    # --- end source-heterogeneity OSSE (M8) ---
+
     if method == "linear":
-        result = oe_from_linear(
-            G=G, y=y_obs, x_prior=x_prior, Sa=Sa, Se=Se, source_names=source_names,
-        )
+        # --- source-heterogeneity OSSE (M8) ---
+        if g_beta is not None:
+            result = bayesian_linear_inversion(
+                g=np.asarray(G, dtype=float), y=y_obs,
+                x_prior=np.asarray(x_prior, dtype=float),
+                s_a=Sa, r=Se, source_names=source_names,
+                g_beta=g_beta, sigma_beta=sigma_beta,
+            )
+        else:
+            result = oe_from_linear(
+                G=G, y=y_obs, x_prior=x_prior, Sa=Sa, Se=Se, source_names=source_names,
+            )
+        # --- end source-heterogeneity OSSE (M8) ---
     else:
         result = optimize_oe(
             F=lambda x: G @ x, y=y_obs, x_prior=x_prior, Sa=Sa, Se=Se,
@@ -219,6 +272,15 @@ def main() -> None:
     if prebuilt_meta:
         summary.update(prebuilt_meta)
     # --- end M2 ---
+    # --- source-heterogeneity OSSE (M8) ---
+    background_meta = locals().get("background_meta")
+    if background_meta is not None:
+        summary["background_nuisance"] = background_meta
+        if getattr(result, "posterior_beta_mean", None) is not None:
+            beta_sigma = np.sqrt(np.maximum(np.diag(result.posterior_beta_cov), 0.0))
+            summary["background_nuisance"]["posterior_beta_mean"] = result.posterior_beta_mean.tolist()
+            summary["background_nuisance"]["posterior_beta_sigma"] = beta_sigma.tolist()
+    # --- end source-heterogeneity OSSE (M8) ---
     summary_path = run_dir.path("summary.json")
     summary_path.write_text(json.dumps(summary, indent=2) + "\n")
     run_dir.record_output("summary.json", role="summary")

@@ -53,3 +53,12 @@ flux:
     lam_factor: 10.0
     eps: 1.0e-4
     fd_step: 1.0e-5
+
+    # --- source-heterogeneity OSSE (M8) ---
+    # Optional background-nuisance block; disabled by default so the E0
+    # regression stays inverse-crime-free with the current behaviour.
+    #
+    # background:
+    #   model: constant     # constant | gradient | none
+    #   sigma: 10.0         # nuisance prior std, observation units (e.g. ppb)
+    # --- end source-heterogeneity OSSE (M8) ---
