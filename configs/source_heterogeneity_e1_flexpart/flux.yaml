@@ -1,41 +1,19 @@
-# ============================================================================
-# Source-heterogeneity OSSE — Experiment E1 (real FLEXPART) — Flux stage.
-# ============================================================================
-#   enforceflux flux --config configs/source_heterogeneity_e1_flexpart/flux.yaml
-# ============================================================================
+# --- source-heterogeneity OSSE (M5) ---
+# Bayesian inversion for the FLEXPART E1 experiment. Consumes the
+# ``basis_mapping.npz`` artefact persisted by the M2 plugin.
 
 stage: flux
-
 run:
   name: source_heterogeneity_e1_flexpart
-
 inputs:
-  dispersion: ../../runs/source_heterogeneity_e1_flexpart/dispersion
-  obs:        ../../runs/source_heterogeneity_e1_flexpart/instrument
+  dispersion: runs/source_heterogeneity_e1_flexpart/dispersion
 
 flux:
-
-  input:
-    mode: instrument_netcdf
-    level_index: 0
-
-  observations:
-    default_sigma: 0.2
-
+  estimator: inversion
   inversion:
-    method: linear
-    prior_flux_kg_s: 0.0
-
+    engine: bayesian
     prior_covariance:
-      model: gaussian_process
+      model: gaussian_process   # gaussian_process | diagonal
       sigma_kg_s: 1.0e-6
-      L_B_m: 800.0
-
-    prior_variance: 1.0e-12
-    prior_sigma_fraction: 0.5
-
-    n_iter: 20
-    lam0: 1.0e-3
-    lam_factor: 10.0
-    eps: 1.0e-4
-    fd_step: 1.0e-5
+      L_B_m: 800.0              # explicit — memo §5.4; do NOT default to L_true
+    r_cond: 1.0e-10

@@ -31,6 +31,42 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 
+# --- source-heterogeneity OSSE (M8) ---
+def _build_background_nuisance(bg_cfg, block, obs_meta, n_obs, input_mode):
+    """Return (g_beta, sigma_beta, meta) for the flux.inversion.background block."""
+    if not bg_cfg:
+        return None, None, {"model": "none"}
+    model = str(bg_cfg.get("model", "none")).strip().lower()
+    if model == "none":
+        return None, None, {"model": "none"}
+    sigma = float(bg_cfg.get("sigma"))
+    if model == "constant":
+        g_beta = np.ones((n_obs, 1), dtype=float)
+        return g_beta, np.array([sigma], dtype=float), {"model": "constant", "sigma": sigma, "n_beta": 1}
+    if model == "gradient":
+        if input_mode != "simulation_receptors":
+            raise NotImplementedError(
+                "flux.inversion.background.model=gradient requires simulation_receptors input mode"
+            )
+        receptors = block.get("receptors") or []
+        if not receptors:
+            raise ValueError("gradient background requires receptors[] with lon/lat")
+        n_time = int(obs_meta.get("n_time", n_obs // len(receptors)))
+        lons = np.array([float(r["lon"]) for r in receptors], dtype=float)
+        lats = np.array([float(r["lat"]) for r in receptors], dtype=float)
+        x_obs = np.repeat(lons, n_time)
+        y_obs = np.repeat(lats, n_time)
+        if x_obs.size != n_obs:
+            raise ValueError(
+                f"gradient background expected {n_obs} obs, receptors*time gave {x_obs.size}"
+            )
+        g_beta = np.stack([np.ones(n_obs), x_obs, y_obs], axis=1)
+        sigma_arr = np.full(3, sigma, dtype=float)
+        return g_beta, sigma_arr, {"model": "gradient", "sigma": sigma, "n_beta": 3}
+    raise ValueError(f"flux.inversion.background.model must be constant|gradient|none, got {model!r}")
+# --- end source-heterogeneity OSSE (M8) ---
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build G from dispersion output and run OE flux inversion"
@@ -41,9 +77,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     from enforceflux.inversion import oe_from_linear, optimize_oe
+    from enforceflux.inversion.bayesian import bayesian_linear_inversion
     from enforceflux.runs import load_stage_config, open_run_dir, read_upstream
     from flux_helpers import build_prior
-    from flux_inputs import build_from_instrument_mode, build_from_receptors_mode
+    from flux_inputs import (
+        build_from_instrument_mode,
+        build_from_receptors_mode,
+        # --- source-heterogeneity OSSE (M2) ---
+        build_from_prebuilt_operator,
+        # --- end M2 ---
+    )
 
     args = build_parser().parse_args()
 
@@ -58,15 +101,39 @@ def main() -> None:
             f"flux needs a dispersion RunDir to build the transport matrix G."
         )
     dispersion_up = read_upstream(stage_cfg.inputs["dispersion"])
-    sim_nc = dispersion_up.file("concentration_field")
+
+    # --- source-heterogeneity OSSE (M2) ---
+    # When the upstream dispersion RunDir carries a prebuilt Jacobian (operator
+    # mode) plus a truth-grid ↔ inversion-basis mapping, use them directly:
+    # observations are synthesized from H_fine @ x_true and the inversion runs
+    # on the coarse basis.
+    prebuilt_operator = (
+        dispersion_up.has("jacobian") and dispersion_up.has("basis_mapping")
+    )
+    if prebuilt_operator:
+        sim_nc = None
+    else:
+        sim_nc = dispersion_up.file("concentration_field")
+    # --- end M2 ---
 
     input_block = dict(block.get("input") or {})
-    input_block["simulation_netcdf"] = str(sim_nc)
+    if sim_nc is not None:
+        input_block["simulation_netcdf"] = str(sim_nc)
     input_mode = str(input_block.get("mode", "simulation_receptors")).strip().lower()
-    if input_mode not in {"simulation_receptors", "instrument_netcdf"}:
-        raise ValueError("flux.input.mode must be 'simulation_receptors' or 'instrument_netcdf'")
+    if input_mode not in {"simulation_receptors", "instrument_netcdf", "prebuilt_operator"}:
+        raise ValueError(
+            "flux.input.mode must be 'simulation_receptors', 'instrument_netcdf', "
+            "or 'prebuilt_operator'"
+        )
 
-    if input_mode == "instrument_netcdf":
+    # --- source-heterogeneity OSSE (M2) ---
+    if prebuilt_operator:
+        input_mode = "prebuilt_operator"
+    # --- end M2 ---
+
+    if prebuilt_operator:
+        obs_up = None
+    elif input_mode == "instrument_netcdf":
         if "obs" not in stage_cfg.inputs:
             raise ValueError(
                 f"{stage_cfg.yaml_path}: `inputs.obs:` is required when "
@@ -86,23 +153,52 @@ def main() -> None:
         "inversion": block.get("inversion") or {},
     }
 
-    if input_mode == "simulation_receptors":
+    # --- source-heterogeneity OSSE (M2) ---
+    prebuilt_meta: dict = {}
+    if input_mode == "prebuilt_operator":
+        (
+            G, y_obs, Se, source_names, vname, obs_meta, n_flux,
+            x_prior, Sa, prebuilt_meta,
+        ) = build_from_prebuilt_operator(
+            legacy_cfg,
+            dispersion_up,
+        )
+        n_sources = len(source_names)
+    elif input_mode == "simulation_receptors":
+    # --- end M2 ---
         G, y_obs, Se, source_names, vname, _, obs_meta, n_flux = build_from_receptors_mode(legacy_cfg)
+        n_sources = len(source_names)
+        x_prior, Sa = build_prior(legacy_cfg, n_sources, n_flux)
     else:
         G, y_obs, Se, source_names, vname, _, obs_meta, n_flux = build_from_instrument_mode(legacy_cfg)
-
-    n_sources = len(source_names)
-    x_prior, Sa = build_prior(legacy_cfg, n_sources, n_flux)
+        n_sources = len(source_names)
+        x_prior, Sa = build_prior(legacy_cfg, n_sources, n_flux)
 
     inv_cfg = legacy_cfg["inversion"]
     method = str(inv_cfg.get("method", "linear")).strip().lower()
     if method not in {"linear", "nonlinear"}:
         raise ValueError("flux.inversion.method must be 'linear' or 'nonlinear'")
 
+    # --- source-heterogeneity OSSE (M8) ---
+    g_beta, sigma_beta, background_meta = _build_background_nuisance(
+        inv_cfg.get("background"), block, obs_meta, len(y_obs), input_mode
+    )
+    # --- end source-heterogeneity OSSE (M8) ---
+
     if method == "linear":
-        result = oe_from_linear(
-            G=G, y=y_obs, x_prior=x_prior, Sa=Sa, Se=Se, source_names=source_names,
-        )
+        # --- source-heterogeneity OSSE (M8) ---
+        if g_beta is not None:
+            result = bayesian_linear_inversion(
+                g=np.asarray(G, dtype=float), y=y_obs,
+                x_prior=np.asarray(x_prior, dtype=float),
+                s_a=Sa, r=Se, source_names=source_names,
+                g_beta=g_beta, sigma_beta=sigma_beta,
+            )
+        else:
+            result = oe_from_linear(
+                G=G, y=y_obs, x_prior=x_prior, Sa=Sa, Se=Se, source_names=source_names,
+            )
+        # --- end source-heterogeneity OSSE (M8) ---
     else:
         result = optimize_oe(
             F=lambda x: G @ x, y=y_obs, x_prior=x_prior, Sa=Sa, Se=Se,
@@ -172,6 +268,19 @@ def main() -> None:
         "converged": bool(result.converged),
         "n_iter": int(result.n_iter),
     }
+    # --- source-heterogeneity OSSE (M2) ---
+    if prebuilt_meta:
+        summary.update(prebuilt_meta)
+    # --- end M2 ---
+    # --- source-heterogeneity OSSE (M8) ---
+    background_meta = locals().get("background_meta")
+    if background_meta is not None:
+        summary["background_nuisance"] = background_meta
+        if getattr(result, "posterior_beta_mean", None) is not None:
+            beta_sigma = np.sqrt(np.maximum(np.diag(result.posterior_beta_cov), 0.0))
+            summary["background_nuisance"]["posterior_beta_mean"] = result.posterior_beta_mean.tolist()
+            summary["background_nuisance"]["posterior_beta_sigma"] = beta_sigma.tolist()
+    # --- end source-heterogeneity OSSE (M8) ---
     summary_path = run_dir.path("summary.json")
     summary_path.write_text(json.dumps(summary, indent=2) + "\n")
     run_dir.record_output("summary.json", role="summary")

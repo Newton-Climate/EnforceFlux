@@ -7,6 +7,9 @@ dependencies = ["numpy", "pyproj", "netCDF4", "pytest-cov", "jax", "pyyaml"]
 
 [project.scripts]
 enforceflux = "enforceflux.cli:main"
+# --- source-heterogeneity OSSE (M4) ---
+osse-sweep = "apps.osse_sweep_main:main"
+# --- end M4 ---
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
@@ -16,6 +19,7 @@ all = ["enforceflux[dev,meteo,analysis]"]
 
 [project.entry-points."enforceflux.source"]
 static = "enforceflux.plugins.source_static:StaticSourceModel"
+lognormal_field = "enforceflux.plugins.source_lognormal_field:LognormalFieldSource"
 
 [project.entry-points."enforceflux.instrument"]
 static = "enforceflux.plugins.instrument_static:StaticInstrumentModel"
