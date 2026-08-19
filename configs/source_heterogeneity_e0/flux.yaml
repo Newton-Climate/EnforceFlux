@@ -1,0 +1,58 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E0 (matched Gaussian ↔ Gaussian)
+# Flux stage.
+# ============================================================================
+#   enforceflux flux --config configs/source_heterogeneity_e0/flux.yaml
+#
+# Consumes the upstream E0 dispersion RunDir. When `basis_mapping.npz` is
+# present (M2 — Agent E), the flux driver:
+#   * builds H_coarse = H_fine @ W.T,
+#   * builds S_a from build_prior_covariance(mapping, sigma_kg_s, L_B_m),
+#   * records BOTH L_true_m (from run metadata) and L_B_m in summary.json so
+#     the memo's inverse-crime guard (§5.4) fires whenever L_B == L_true.
+#
+# L_B_m below is DELIBERATELY offset from L_true (= 500 m) to avoid the
+# inverse crime; do not "tune" it back to L_true.
+# ============================================================================
+
+stage: flux
+
+run:
+  name: source_heterogeneity_e0
+
+inputs:
+  dispersion: ../../runs/source_heterogeneity_e0/dispersion
+  obs:        ../../runs/source_heterogeneity_e0/instrument
+
+flux:
+
+  input:
+    mode: instrument_netcdf
+    level_index: 0
+
+  observations:
+    default_sigma: 0.2
+
+  inversion:
+    method: linear
+
+    prior_flux_kg_s: 0.0
+
+    # Gaussian-process prior covariance (M2). `sigma_kg_s` scales the
+    # diagonal; `L_B_m` sets the prior correlation length in metres.
+    # NOTE: the `prior_covariance:` block is consumed by the M2 branch of
+    # apps/flux_main.py; when M2 has not yet landed the flux driver falls back
+    # to the diagonal `prior_variance` below.
+    prior_covariance:
+      model: gaussian_process   # gaussian_process | diagonal
+      sigma_kg_s: 1.0e-6
+      L_B_m: 800.0              # explicit — memo §5.4; do NOT default to L_true (500 m)
+
+    prior_variance: 1.0e-12
+    prior_sigma_fraction: 0.5
+
+    n_iter: 20
+    lam0: 1.0e-3
+    lam_factor: 10.0
+    eps: 1.0e-4
+    fd_step: 1.0e-5

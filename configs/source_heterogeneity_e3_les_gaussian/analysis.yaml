@@ -1,0 +1,37 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E3 — Analysis stage.
+# ============================================================================
+#   enforceflux analysis --config configs/source_heterogeneity_e3_les_gaussian/analysis.yaml
+# ============================================================================
+
+stage: analysis
+
+run:
+  name: source_heterogeneity_e3_les_gaussian
+
+inputs:
+  instrument: ../../runs/source_heterogeneity_e3_les_gaussian/instrument
+
+analysis:
+
+  input:
+    kind: auto
+    simulation_variable_names: [concentration, ch4_mixing_ratio, ch4_concentration]
+
+  analysis:
+    prior_variance: 1.0e-8
+
+  visualization:
+    enabled: true
+    time_index: 0
+    level_index: 0
+    release_index: 0
+    wind_rose:
+      enabled: false
+      u_var: u10
+      v_var: v10
+      n_dir_bins: 16
+      calm_threshold: 0.2
+      title: Wind Rose
+      cmap: viridis
+      output_name: wind_rose.png

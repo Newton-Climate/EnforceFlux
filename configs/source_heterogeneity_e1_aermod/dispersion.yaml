@@ -1,0 +1,85 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E1 (LPDM ↔ LPDM, AERMOD as proxy)
+# Dispersion stage — BASE config for the M4 sweep.
+# ============================================================================
+#   enforceflux dispersion --config configs/source_heterogeneity_e1_aermod/dispersion.yaml
+#
+# E1 sweeps (L, CV, N, seed) with the AERMOD Gaussian model standing in as a
+# cheap LPDM proxy on both sides of the OSSE (nature and inversion). The full
+# grid is defined in `sweep.yaml`; the values below are the DEFAULT anchor
+# point used both for standalone runs and as the base the sweep driver
+# overrides field-by-field.
+# ============================================================================
+
+stage: dispersion
+
+run:
+  name: source_heterogeneity_e1_aermod
+
+inputs: {}
+
+dispersion:
+
+  transport:
+    model: aermod
+    mode: operator
+    start: "2020-03-31T00:00:00"
+    end:   "2020-03-31T06:00:00"
+
+  met:
+    records:
+      - {time: "2020-03-31T00:00", wind_speed_m_s: 2.5, wind_direction_deg: 250.0,
+         temperature_k: 285.0, mixing_height_m: 300.0,
+         friction_velocity_m_s: 0.20, sensible_heat_flux_w_m2:  -20.0}
+      - {time: "2020-03-31T02:00", wind_speed_m_s: 3.0, wind_direction_deg: 260.0,
+         temperature_k: 290.0, mixing_height_m: 500.0,
+         friction_velocity_m_s: 0.25, sensible_heat_flux_w_m2:   30.0}
+      - {time: "2020-03-31T04:00", wind_speed_m_s: 3.5, wind_direction_deg: 270.0,
+         temperature_k: 295.0, mixing_height_m: 900.0,
+         friction_velocity_m_s: 0.32, sensible_heat_flux_w_m2:  180.0}
+      - {time: "2020-03-31T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 296.0, mixing_height_m: 1000.0,
+         friction_velocity_m_s: 0.34, sensible_heat_flux_w_m2:  120.0}
+
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -1600.0
+    x_max:  1600.0
+    y_min: -1600.0
+    y_max:  1600.0
+    spacing_m: 50.0
+    receptor_height_m: 2.0
+    heights_m: [100.0]
+
+  # NOTE: `sources.generator:` activates in M2 (Agent E). This is the anchor
+  # point; sweep.yaml overrides `covariance.L_m`, `cv`, `seed`.
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 2.7778e-2
+      grid: {nx: 64, ny: 64, dx_m: 50.0, origin_x_m: -1600.0, origin_y_m: -1600.0}
+      alt_m: 2.0
+      covariance: {model: exponential, L_m: 500.0}
+      cv: 1.0
+      seed: 0
+      basis: {coarsen: 4}
+      prior: {mean_kg_s_per_cell: 0.0}
+
+  # Anchor receptor set; the sweep replaces this with the layout selected via
+  # `instrument.network` in sweep.yaml once M3/M4 network generators land.
+  receptors:
+    - {id: r_n,  x_m:    0.0, y_m:  650.0, alt_m: 3.0}
+    - {id: r_e,  x_m:  600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: r_s,  x_m:    0.0, y_m: -650.0, alt_m: 3.0}
+    - {id: r_w,  x_m: -600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: r_ne, x_m:  450.0, y_m:  450.0, alt_m: 3.0}
+    - {id: r_sw, x_m: -450.0, y_m: -450.0, alt_m: 3.0}
+    - {id: r_nw, x_m: -450.0, y_m:  450.0, alt_m: 3.0}
+    - {id: r_se, x_m:  450.0, y_m: -450.0, alt_m: 3.0}
+
+  aermod:
+    reduce: stack
+    default_stack:
+      height_m: 2.0
+    receptor_path_samples: 1

@@ -1,0 +1,79 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E3 (LES nature ↔ Gaussian inversion)
+# Dispersion stage — the LES "nature" run.
+# ============================================================================
+#   enforceflux dispersion --config configs/source_heterogeneity_e3_les_gaussian/dispersion.yaml
+#
+# E3 pairs a MicroHH nature with an AERMOD (Gaussian) inversion H — the
+# structural-error tier that exposes the memo's Fig 5 error floor. The LES
+# nature is identical in configuration to E2; only the inversion transport
+# differs (see flux.yaml `inputs.dispersion`).
+#
+# NOTE: same M2 + M6 activation as E2.
+# ============================================================================
+
+stage: dispersion
+
+run:
+  name: source_heterogeneity_e3_les_gaussian
+
+inputs: {}
+
+dispersion:
+
+  transport:
+    model: microhh
+    mode: simulation
+    start: "2020-03-31T00:00:00"
+    end:   "2020-03-31T06:00:00"
+
+  met:
+    records:
+      - {time: "2020-03-31T00:00", wind_speed_m_s: 3.0, wind_direction_deg: 270.0,
+         temperature_k: 290.0, mixing_height_m: 800.0,
+         friction_velocity_m_s: 0.30, sensible_heat_flux_w_m2:  150.0}
+      - {time: "2020-03-31T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 295.0, mixing_height_m: 1000.0,
+         friction_velocity_m_s: 0.34, sensible_heat_flux_w_m2:  120.0}
+
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -1920.0
+    x_max:  1920.0
+    y_min:  -960.0
+    y_max:   960.0
+    spacing_m: 20.0
+    receptor_height_m: 2.0
+    heights_m: [100.0]
+
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 2.7778e-2
+      grid: {nx: 192, ny: 96, dx_m: 20.0, origin_x_m: -1920.0, origin_y_m: -960.0}
+      alt_m: 2.0
+      covariance: {model: exponential, L_m: 500.0}
+      cv: 1.0
+      seed: 0
+      basis: {coarsen: 8}
+      prior: {mean_kg_s_per_cell: 0.0}
+
+  receptors:
+    - {id: r_n,  x_m:    0.0, y_m:  650.0, alt_m: 3.0}
+    - {id: r_e,  x_m:  600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: r_s,  x_m:    0.0, y_m: -650.0, alt_m: 3.0}
+    - {id: r_w,  x_m: -600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: r_ne, x_m:  450.0, y_m:  450.0, alt_m: 3.0}
+    - {id: r_sw, x_m: -450.0, y_m: -450.0, alt_m: 3.0}
+    - {id: r_nw, x_m: -450.0, y_m:  450.0, alt_m: 3.0}
+    - {id: r_se, x_m:  450.0, y_m: -450.0, alt_m: 3.0}
+
+  microhh:
+    executable: ../../microhh/build/microhh
+    num_workers: 4
+    grid: {itot: 192, jtot: 96, ktot: 64, xsize: 3840.0, ysize: 1920.0, zsize: 2048.0}
+    spinup_seconds: 1800
+    runtime_seconds: 3600
+    sampletime: 60
+    met_reduce: daytime_mean
