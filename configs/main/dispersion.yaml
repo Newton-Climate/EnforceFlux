@@ -1,10 +1,10 @@
 # ============================================================================
 # One config, any transport model — dispersion stage default template.
 # ============================================================================
-#   enforceflux dispersion --config configs/dispersion/main.yaml
-#   enforceflux dispersion --config configs/dispersion/main.yaml --model flexpart
-#   enforceflux dispersion --config configs/dispersion/main.yaml --mode operator
-#   enforceflux dispersion --config configs/dispersion/main.yaml --dry-run
+#   enforceflux dispersion --config configs/main/dispersion.yaml
+#   enforceflux dispersion --config configs/main/dispersion.yaml --model flexpart
+#   enforceflux dispersion --config configs/main/dispersion.yaml --mode operator
+#   enforceflux dispersion --config configs/main/dispersion.yaml --dry-run
 #
 # CLI overrides: --model, --mode. --dry-run writes each model's input files
 # without executing it (the only path when a Fortran binary is not built).
@@ -37,13 +37,15 @@
 # so the config runs standalone without any downloaded weather. Every AERMOD
 # and MicroHH config in this directory follows the same convention.
 #
-# For real ERA5 meteorology, replace `records:` with:
+# For real ERA5 meteorology, first run
+#     enforceflux met --config configs/sacramento_valley_2020_april_week/met.yaml
+# and then swap `records:` for the resulting met RunDir:
 #     era5:
-#       meteo_dir: ../../runs/sacramento_valley_2020/meteo_april_week
-# and download it first with `enforceflux met --config configs/met/main.yaml`.
+#       meteo_dir:      ../../runs/sacramento_valley_2020_april_week/met
+#       available_file: ../../runs/sacramento_valley_2020_april_week/met/AVAILABLE
 #
 # FLEXPART is the exception: its Fortran binary strictly needs GRIB, so
-# configs/dispersion/*_flexpart.yaml use the bundled test met that ships
+# configs/*_flexpart/dispersion.yaml use the bundled test met that ships
 # with the FLEXPART submodule instead of inline records.
 #
 # ── GEOMETRY IS A CONTRACT ──────────────────────────────────────────────────

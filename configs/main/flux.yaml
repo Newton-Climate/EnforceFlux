@@ -1,7 +1,7 @@
 # ============================================================================
 # Flux inversion — flux stage
 # ============================================================================
-#   enforceflux flux --config configs/flux/main.yaml
+#   enforceflux flux --config configs/main/flux.yaml
 #
 # Builds the transport matrix G from the upstream dispersion RunDir and solves
 # for the posterior fluxes by optimal estimation:
@@ -21,8 +21,8 @@
 #           flux.posterior  (posterior.csv)
 #
 # Run the two upstream stages first, e.g.:
-#     enforceflux dispersion --config configs/dispersion/single_source_aermod.yaml
-#     enforceflux instrument --config configs/instrument/main.yaml
+#     enforceflux dispersion --config configs/single_source_aermod/dispersion.yaml
+#     enforceflux instrument --config configs/main/instrument.yaml
 # then edit the inputs paths below (or reuse this pair verbatim).
 # ============================================================================
 

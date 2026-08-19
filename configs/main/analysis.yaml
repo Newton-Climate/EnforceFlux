@@ -1,7 +1,7 @@
 # ============================================================================
 # Analysis stage — information-content diagnostics + plots.
 # ============================================================================
-#   enforceflux analysis --config configs/analysis/main.yaml
+#   enforceflux analysis --config configs/main/analysis.yaml
 #
 # Reads either an instrument RunDir (preferred — gives DFS, averaging kernel,
 # posterior uncertainty from the operator + noise model) or a dispersion RunDir
@@ -15,8 +15,8 @@
 #           analysis.plot_*   (plots/*.png, when visualization.enabled)
 #
 # Run the upstream stage(s) first, e.g.:
-#     enforceflux dispersion --config configs/dispersion/single_source_aermod.yaml
-#     enforceflux instrument --config configs/instrument/main.yaml
+#     enforceflux dispersion --config configs/single_source_aermod/dispersion.yaml
+#     enforceflux instrument --config configs/main/instrument.yaml
 # then either edit the inputs paths below or reuse this pair verbatim.
 # ============================================================================
 

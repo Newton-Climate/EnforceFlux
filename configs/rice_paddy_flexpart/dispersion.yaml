@@ -88,6 +88,10 @@ dispersion:
   flexpart:
     executable: ../../flexpart/src/FLEXPART
     options_dir: ../../flexpart/options
+    # Bundled test met — self-contained, runs offline. For a real ERA5 run,
+    # swap these two lines for a met RunDir:
+    #     meteo_dir:      ../../runs/sacramento_valley_2020/met
+    #     available_file: ../../runs/sacramento_valley_2020/met/AVAILABLE
     meteo_dir: ../../flexpart/tests/testdata
     available_file: ../../tests/fixtures/flexpart_meteo/AVAILABLE
     # Distributed across 36 sources; keep per-source count modest so total

@@ -1,6 +1,6 @@
 # Single 100 kg/hr point leak at Sacramento — MicroHH turbulence-resolving LES.
 # Runs standalone via inline synthetic met (no ERA5 download required).
-# Reference schema in configs/dispersion/main.yaml.
+# Reference schema in configs/main/dispersion.yaml.
 
 stage: dispersion
 run:

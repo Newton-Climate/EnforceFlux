@@ -1,7 +1,7 @@
 # 30-minute high-frequency LES for the eddy-covariance operator.
 # The analysis window follows a 30-minute turbulence spin-up.
 # Target of enforceflux.microhh.ec_operator (reduce="ec_covariance" in the
-# microhh transport plugin). Reference schema in configs/dispersion/main.yaml.
+# microhh transport plugin). Reference schema in configs/main/dispersion.yaml.
 
 stage: dispersion
 run:

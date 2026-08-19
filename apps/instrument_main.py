@@ -11,7 +11,7 @@ Roles:
        instrument.obs_csv    → obs.csv    (flat, one row per (time, sensor))
 
 Usage:
-    enforceflux instrument --config configs/instrument/main.yaml
+    enforceflux instrument --config configs/main/instrument.yaml
 """
 import argparse
 import csv

@@ -1,7 +1,7 @@
 # ============================================================================
 # Fine-grid MicroHH LES for OPTICAL C_n^2 / scintillation over an open path.
 # ============================================================================
-#   enforceflux dispersion --config configs/dispersion/optical_scintillation_microhh.yaml
+#   enforceflux dispersion --config configs/optical_scintillation_microhh/dispersion.yaml
 #
 # Purpose: resolve the surface-layer temperature turbulence that sets the
 # refractive-index structure parameter C_n^2 along a 300 m open beam at ~20 m,

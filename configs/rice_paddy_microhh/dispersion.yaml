@@ -1,11 +1,11 @@
 # ============================================================================
 # Sacramento Valley, 2020-03-31 — 300 x 300 m rice paddy, diurnal LES.
 # ============================================================================
-#   enforceflux dispersion --config configs/dispersion/rice_paddy_microhh.yaml
+#   enforceflux dispersion --config configs/rice_paddy_microhh/dispersion.yaml
 #
 # Same box, met, and domain as the single-source runs — the only change is the
 # source geometry, so the paddy and point-source runs are directly comparable.
-# Reference schema in configs/dispersion/main.yaml.
+# Reference schema in configs/main/dispersion.yaml.
 #
 # ── THE SOURCE ──────────────────────────────────────────────────────────────
 # Flux: 2.0e-10 kg m-2 s-1 (~0.17 mg CH4 m-2 hr-1), the pre-season / background
