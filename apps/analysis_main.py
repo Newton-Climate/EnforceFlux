@@ -69,6 +69,62 @@ def _maybe_add_wind_rose(
     }
 
 
+# --- source-heterogeneity OSSE (M2) ---
+def _maybe_add_source_heterogeneity(summary: dict, stage_cfg) -> None:
+    """Expand a coarse flux posterior back to the truth grid and compute E_Q."""
+    import json as _json
+
+    import numpy as _np
+
+    from enforceflux.runs import read_upstream
+
+    disp_ref = stage_cfg.inputs.get("dispersion")
+    flux_ref = stage_cfg.inputs.get("flux")
+    if disp_ref is None or flux_ref is None:
+        return
+    try:
+        disp_up = read_upstream(disp_ref)
+        flux_up = read_upstream(flux_ref)
+    except (FileNotFoundError, ValueError):
+        return
+    if not (disp_up.has("basis_mapping") and disp_up.has("truth_field")):
+        return
+    if not flux_up.has("summary"):
+        return
+
+    from netCDF4 import Dataset
+
+    from enforceflux.analysis.metrics import total_emission_error
+    from enforceflux.source_fields.basis import load_mapping
+
+    mapping = load_mapping(disp_up.file("basis_mapping"))
+    with Dataset(disp_up.file("truth_field")) as ds:
+        F_true = _np.asarray(ds.variables["F_true"][:], dtype=float)
+
+    flux_summary = _json.loads(flux_up.file("summary").read_text())
+    x_opt = _np.asarray(flux_summary.get("x_opt_kg_s") or [], dtype=float).reshape(-1)
+    if x_opt.size != mapping.W.shape[0]:
+        return
+
+    W = _np.asarray(mapping.W, dtype=float)
+    n_per = W.sum(axis=1)
+    W_dist = W / n_per[:, None]
+    x_fine = W_dist.T @ x_opt  # emission per fine cell (kg/s)
+    x_true_fine = F_true.ravel() * mapping.fine_cell_areas_m2
+    areas_unit = _np.ones_like(x_fine)
+    e_q = total_emission_error(x_fine, x_true_fine, areas_unit)
+
+    summary["source_heterogeneity"] = {
+        "E_Q": float(e_q),
+        "n_fine_cells": int(mapping.fine_cell_areas_m2.size),
+        "n_coarse_cells": int(mapping.coarse_cell_areas_m2.size),
+        "L_true_m": float(flux_summary.get("L_true_m", 0.0)),
+        "L_B_m": float(flux_summary.get("L_B_m", 0.0)),
+        "inverse_crime_flag": bool(flux_summary.get("inverse_crime_flag", False)),
+    }
+# --- end M2 ---
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Information-content analysis of a dispersion or instrument RunDir"
@@ -91,6 +147,48 @@ def main() -> None:
     instrument_up = None
     dispersion_up = None
     nc_path: Path
+    # --- source-heterogeneity OSSE (M2) ---
+    # When the upstream dispersion RunDir is an operator-mode
+    # source-heterogeneity run (no concentration field, just a Jacobian +
+    # basis mapping), bypass the standard analyze_* path and emit only the
+    # E_Q / inverse-crime summary.
+    _sh_only = (
+        "instrument" not in stage_cfg.inputs
+        and "dispersion" in stage_cfg.inputs
+    )
+    if _sh_only:
+        try:
+            _disp_probe = read_upstream(stage_cfg.inputs["dispersion"])
+            _sh_only = (
+                _disp_probe.has("basis_mapping")
+                and not _disp_probe.has("concentration_field")
+            )
+        except (FileNotFoundError, ValueError):
+            _sh_only = False
+    if _sh_only:
+        run_dir = open_run_dir(
+            stage="analysis",
+            run_name=stage_cfg.run_name,
+            outputs_root=stage_cfg.outputs_root,
+            inputs={k: str(v) for k, v in stage_cfg.inputs.items()},
+        )
+        run_dir.snapshot_config(stage_cfg.snapshot)
+        summary: dict = {"upstream": {
+            "instrument": None,
+            "dispersion": str(_disp_probe.root),
+        }}
+        _maybe_add_source_heterogeneity(summary, stage_cfg)
+        summary_path = run_dir.path("summary.json")
+        summary_path.write_text(json.dumps(jsonify(summary), indent=2) + "\n")
+        run_dir.record_output("summary.json", role="summary")
+        contract = run_dir.finalize()
+        print("EnforceFlux analysis (source-heterogeneity mode)")
+        print(f"Run dir    : {run_dir.root}")
+        print(f"Summary    : {summary_path}")
+        print(f"Manifest   : {contract['manifest']}")
+        return
+    # --- end M2 ---
+
     if "instrument" in stage_cfg.inputs:
         instrument_up = read_upstream(stage_cfg.inputs["instrument"])
         nc_path = instrument_up.file("obs")
@@ -153,6 +251,10 @@ def main() -> None:
         "instrument": str(instrument_up.root) if instrument_up is not None else None,
         "dispersion": str(dispersion_up.root) if dispersion_up is not None else None,
     }
+
+    # --- source-heterogeneity OSSE (M2) ---
+    _maybe_add_source_heterogeneity(summary, stage_cfg)
+    # --- end M2 ---
 
     summary_path = run_dir.path("summary.json")
     summary_path.write_text(json.dumps(jsonify(summary), indent=2) + "\n")

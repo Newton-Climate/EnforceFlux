@@ -43,7 +43,13 @@ def main() -> None:
     from enforceflux.inversion import oe_from_linear, optimize_oe
     from enforceflux.runs import load_stage_config, open_run_dir, read_upstream
     from flux_helpers import build_prior
-    from flux_inputs import build_from_instrument_mode, build_from_receptors_mode
+    from flux_inputs import (
+        build_from_instrument_mode,
+        build_from_receptors_mode,
+        # --- source-heterogeneity OSSE (M2) ---
+        build_from_prebuilt_operator,
+        # --- end M2 ---
+    )
 
     args = build_parser().parse_args()
 
@@ -58,15 +64,39 @@ def main() -> None:
             f"flux needs a dispersion RunDir to build the transport matrix G."
         )
     dispersion_up = read_upstream(stage_cfg.inputs["dispersion"])
-    sim_nc = dispersion_up.file("concentration_field")
+
+    # --- source-heterogeneity OSSE (M2) ---
+    # When the upstream dispersion RunDir carries a prebuilt Jacobian (operator
+    # mode) plus a truth-grid ↔ inversion-basis mapping, use them directly:
+    # observations are synthesized from H_fine @ x_true and the inversion runs
+    # on the coarse basis.
+    prebuilt_operator = (
+        dispersion_up.has("jacobian") and dispersion_up.has("basis_mapping")
+    )
+    if prebuilt_operator:
+        sim_nc = None
+    else:
+        sim_nc = dispersion_up.file("concentration_field")
+    # --- end M2 ---
 
     input_block = dict(block.get("input") or {})
-    input_block["simulation_netcdf"] = str(sim_nc)
+    if sim_nc is not None:
+        input_block["simulation_netcdf"] = str(sim_nc)
     input_mode = str(input_block.get("mode", "simulation_receptors")).strip().lower()
-    if input_mode not in {"simulation_receptors", "instrument_netcdf"}:
-        raise ValueError("flux.input.mode must be 'simulation_receptors' or 'instrument_netcdf'")
+    if input_mode not in {"simulation_receptors", "instrument_netcdf", "prebuilt_operator"}:
+        raise ValueError(
+            "flux.input.mode must be 'simulation_receptors', 'instrument_netcdf', "
+            "or 'prebuilt_operator'"
+        )
 
-    if input_mode == "instrument_netcdf":
+    # --- source-heterogeneity OSSE (M2) ---
+    if prebuilt_operator:
+        input_mode = "prebuilt_operator"
+    # --- end M2 ---
+
+    if prebuilt_operator:
+        obs_up = None
+    elif input_mode == "instrument_netcdf":
         if "obs" not in stage_cfg.inputs:
             raise ValueError(
                 f"{stage_cfg.yaml_path}: `inputs.obs:` is required when "
@@ -86,13 +116,26 @@ def main() -> None:
         "inversion": block.get("inversion") or {},
     }
 
-    if input_mode == "simulation_receptors":
+    # --- source-heterogeneity OSSE (M2) ---
+    prebuilt_meta: dict = {}
+    if input_mode == "prebuilt_operator":
+        (
+            G, y_obs, Se, source_names, vname, obs_meta, n_flux,
+            x_prior, Sa, prebuilt_meta,
+        ) = build_from_prebuilt_operator(
+            legacy_cfg,
+            dispersion_up,
+        )
+        n_sources = len(source_names)
+    elif input_mode == "simulation_receptors":
+    # --- end M2 ---
         G, y_obs, Se, source_names, vname, _, obs_meta, n_flux = build_from_receptors_mode(legacy_cfg)
+        n_sources = len(source_names)
+        x_prior, Sa = build_prior(legacy_cfg, n_sources, n_flux)
     else:
         G, y_obs, Se, source_names, vname, _, obs_meta, n_flux = build_from_instrument_mode(legacy_cfg)
-
-    n_sources = len(source_names)
-    x_prior, Sa = build_prior(legacy_cfg, n_sources, n_flux)
+        n_sources = len(source_names)
+        x_prior, Sa = build_prior(legacy_cfg, n_sources, n_flux)
 
     inv_cfg = legacy_cfg["inversion"]
     method = str(inv_cfg.get("method", "linear")).strip().lower()
@@ -172,6 +215,10 @@ def main() -> None:
         "converged": bool(result.converged),
         "n_iter": int(result.n_iter),
     }
+    # --- source-heterogeneity OSSE (M2) ---
+    if prebuilt_meta:
+        summary.update(prebuilt_meta)
+    # --- end M2 ---
     summary_path = run_dir.path("summary.json")
     summary_path.write_text(json.dumps(summary, indent=2) + "\n")
     run_dir.record_output("summary.json", role="summary")

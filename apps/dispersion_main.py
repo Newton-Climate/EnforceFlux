@@ -91,6 +91,15 @@ def main() -> None:
         output_path=output_path,
     )
 
+    # --- source-heterogeneity OSSE (M2) ---
+    # Drain any artefacts the source generator staged (e.g. truth_field.nc,
+    # basis_mapping.npz) into the dispersion RunDir alongside concentration.nc.
+    from enforceflux.plugins.source_lognormal_field import drain_pending_writes
+
+    for relpath, role in drain_pending_writes(run_dir.root):
+        run_dir.record_output(relpath, role=role)
+    # --- end M2 ---
+
     print("EnforceFlux dispersion")
     print(f"Config     : {stage_cfg.yaml_path}")
     print(f"Run name   : {stage_cfg.run_name}")
@@ -131,8 +140,29 @@ def main() -> None:
             values = "  ".join(f"{v:14.5g}" for v in row)
             print(f"{name:>34s}  {values}")
 
+    # --- source-heterogeneity OSSE (M2) ---
+    # In operator mode the Jacobian G lives in memory; persist it so the flux
+    # stage can consume it directly (no per-source simulation NetCDF path).
+    if result.g is not None:
+        import numpy as _np
+
+        jac_path = run_dir.path("jacobian.npz")
+        _np.savez(
+            jac_path,
+            G=_np.asarray(result.g),
+            row_labels=_np.asarray([str(r) for r in result.row_labels]),
+            column_labels=_np.asarray([str(c) for c in result.column_labels]),
+            units=_np.asarray(str(result.units)),
+        )
+        run_dir.record_output("jacobian.npz", role="jacobian")
+    # --- end M2 ---
+
     if output_path.is_file():
         run_dir.record_output("concentration.nc", role="concentration_field")
+        contract = run_dir.finalize()
+        print()
+        print(f"Manifest   : {contract['manifest']}")
+    elif result.g is not None:
         contract = run_dir.finalize()
         print()
         print(f"Manifest   : {contract['manifest']}")
