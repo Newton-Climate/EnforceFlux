@@ -1,0 +1,35 @@
+stage: dispersion
+run: {name: july01_2026_flexpart_heterogeneous}
+inputs: {}
+dispersion:
+  transport: {model: flexpart, mode: simulation, start: "2026-07-01T12:00:00", end: "2026-07-01T13:00:00"}
+  met:
+    era5: {meteo_dir: ../../runs/sacramento_valley_2026_july01_point/met}
+  domain: {origin_lon: -121.75, origin_lat: 39.15, x_min: -1920.0, x_max: 1920.0, y_min: -960.0, y_max: 960.0, spacing_m: 80.0, receptor_height_m: 3.0, heights_m: [3.0]}
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 2.7778e-2
+      grid: {nx: 48, ny: 24, dx_m: 80.0, origin_x_m: -1920.0, origin_y_m: -960.0}
+      alt_m: 2.0
+      covariance: {model: exponential, L_m: 500.0}
+      cv: 1.0
+      seed: 0
+      basis: {coarsen: 4}
+      prior: {mean_kg_s_per_cell: 0.0}
+  receptors:
+    - {id: tower_n, x_m: 0.0, y_m: 650.0, alt_m: 3.0}
+    - {id: tower_e, x_m: 600.0, y_m: 0.0, alt_m: 3.0}
+    - {id: tower_s, x_m: 0.0, y_m: -650.0, alt_m: 3.0}
+  flexpart:
+    executable: ../../flexpart/src/FLEXPART
+    options_dir: ../../flexpart/options
+    meteo_dir: ../../runs/sacramento_valley_2026_july01_point/met
+    available_file: ../../runs/sacramento_valley_2026_july01_point/met/AVAILABLE
+    # This is per source cell; 500 gives 576,000 particles over 1,152 cells.
+    n_particles: 500
+    species_number: 24
+    output_step_seconds: 300
+    sync_seconds: 150
+    nxshift: 0
+    env: {OMP_NUM_THREADS: 1}

@@ -1,0 +1,19 @@
+stage: met
+run: {name: sacramento_valley_2026_july01_point}
+met:
+  era5:
+    # Regional ERA5 domain with the horizontal halo FLEXPART needs for
+    # interpolation around the 3.8 x 1.9 km LES/LPDM experiment.
+    start: "2026-07-01T00:00:00"
+    end: "2026-07-02T03:00:00"
+    timestep_hours: 3
+    vertical_mode: model_levels
+    model_level_grid_deg: 0.25
+    model_level_allow_global_fallback: false
+    # Keep raw daily files: this makes interrupted or retried downloads
+    # recoverable without requesting the same data again.
+    cleanup_raw_daily_grib: false
+    bbox: {lon_min: -122.75, lat_min: 38.0, lon_max: -120.75, lat_max: 40.0}
+  available_filename: AVAILABLE
+  skip_if_available_covers_window: true
+  check_timestep_hours: 3
