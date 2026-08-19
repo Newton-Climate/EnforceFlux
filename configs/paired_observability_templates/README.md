@@ -17,6 +17,10 @@ python notebooks/hetero_experiments/run_paired_observability_experiment.py --pil
 # Run the configured 450 sensor/operator cells and 900 inversions.
 python notebooks/hetero_experiments/run_paired_observability_experiment.py --full
 
+# Run one L/CV/network slice, for example the most heterogeneous N=2 case.
+python notebooks/hetero_experiments/run_paired_observability_experiment.py \
+  --full --L-source 200 --cv 2.0 --n-instruments 2
+
 # Rebuild result, equality, and required-network CSV summaries.
 python notebooks/hetero_experiments/run_paired_observability_experiment.py --summarize
 ```

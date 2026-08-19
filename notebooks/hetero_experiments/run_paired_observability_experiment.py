@@ -238,7 +238,8 @@ def summarize(spec: dict) -> None:
     fields = [
         "L_source_m", "cv", "source_seed", "layout_seed", "n_instruments",
         "technology", "mode", "Q_true_kg_s", "Q_hat_kg_s", "E_Q",
-        "posterior_sigma_total_kg_s", "success",
+        "posterior_sigma_total_kg_s", "n_observations", "operator_rank",
+        "zero_sensitivity_rows", "physical_nonnegative", "success",
     ]
     rows = []
     for L, cv, source_seed, layout_seed, n, technology in cells(spec):
@@ -257,7 +258,9 @@ def summarize(spec: dict) -> None:
             with Dataset(ROOT / "runs" / nature_name(spec, L, cv, source_seed) /
                          "dispersion/truth_field.nc") as ds:
                 q_true = float(np.sum(ds["F_true"][:] * ds["cell_area_m2"][:]))
-            sx = np.load(matrices_path)["Sx"]
+            matrices = np.load(matrices_path)
+            sx = matrices["Sx"]
+            g = np.asarray(matrices["G"], float)
             sigma_total = float(math.sqrt(max(float(np.ones(sx.shape[0]) @ sx @ np.ones(sx.shape[0])), 0.0)))
             error = abs(q_hat - q_true) / q_true
             rows.append({
@@ -266,6 +269,10 @@ def summarize(spec: dict) -> None:
                 "technology": technology, "mode": mode, "Q_true_kg_s": q_true,
                 "Q_hat_kg_s": q_hat, "E_Q": error,
                 "posterior_sigma_total_kg_s": sigma_total,
+                "n_observations": int(g.shape[0]),
+                "operator_rank": int(np.linalg.matrix_rank(g)),
+                "zero_sensitivity_rows": int(np.sum(np.all(g == 0.0, axis=1))),
+                "physical_nonnegative": int(np.all(np.asarray(flux["x_opt_kg_s"]) >= 0.0)),
                 "success": int(error <= float(spec["inversion"]["success_error_fraction"])),
             })
     with output.open("w", newline="") as stream:
@@ -309,6 +316,10 @@ def summarize(spec: dict) -> None:
             "median_E_op": float(np.median(op_error)),
             "P_success_point": float(np.mean([s["point"]["success"] for s in samples])),
             "P_success_op": float(np.mean([s["op"]["success"] for s in samples])),
+            "median_operator_rank_point": float(np.median([s["point"]["operator_rank"] for s in samples])),
+            "median_operator_rank_op": float(np.median([s["op"]["operator_rank"] for s in samples])),
+            "zero_sensitivity_rows_point": int(sum(s["point"]["zero_sensitivity_rows"] for s in samples)),
+            "zero_sensitivity_rows_op": int(sum(s["op"]["zero_sensitivity_rows"] for s in samples)),
             "median_error_ratio_op_over_point": median_ratio,
             "log_ratio_ci_low": float(ci_low), "log_ratio_ci_high": float(ci_high),
             "equivalent": int(
@@ -353,6 +364,12 @@ def main() -> None:
     group.add_argument("--pilot", action="store_true", help="Run one paired cell in both inversion modes")
     group.add_argument("--full", action="store_true", help="Run the complete configured matrix")
     group.add_argument("--summarize", action="store_true", help="Collect completed runs into CSV")
+    parser.add_argument("--L-source", type=int, choices=(200, 500, 1000),
+                        help="Restrict --full to one source correlation length")
+    parser.add_argument("--cv", type=float, choices=(0.5, 1.0, 2.0),
+                        help="Restrict --full to one coefficient of variation")
+    parser.add_argument("--n-instruments", type=int, choices=(2, 3, 4, 8, 16),
+                        help="Restrict --full to one network size")
     args = parser.parse_args()
     spec = load_yaml("experiment.yaml")
     validate(spec)
@@ -363,6 +380,13 @@ def main() -> None:
     selected = list(cells(spec))
     if args.pilot:
         selected = [cell for cell in selected if cell[:5] == (200, 0.5, 0, 0, 2)]
+    else:
+        if args.L_source is not None:
+            selected = [cell for cell in selected if cell[0] == args.L_source]
+        if args.cv is not None:
+            selected = [cell for cell in selected if cell[1] == args.cv]
+        if args.n_instruments is not None:
+            selected = [cell for cell in selected if cell[4] == args.n_instruments]
     with tempfile.TemporaryDirectory(prefix="paired_observability_") as tmp_dir:
         for cell in selected:
             run_cell(spec, *cell, Path(tmp_dir))
