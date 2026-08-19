@@ -1,0 +1,10 @@
+# --- source-heterogeneity OSSE (M8) ---
+# Example of the optional background-nuisance block. Disabled by default so
+# the E0 regression stays inverse-crime-free with the current behaviour.
+#
+# flux:
+#   inversion:
+#     background:
+#       model: constant     # constant | gradient | none
+#       sigma: 10.0         # nuisance prior std, observation units (e.g. ppb)
+# --- end source-heterogeneity OSSE (M8) ---

@@ -25,3 +25,7 @@ class InversionResult:
     converged: bool = True
     n_iter: int = 1
     source_names: list | None = None
+    # --- source-heterogeneity OSSE (M8) ---
+    posterior_beta_mean: np.ndarray | None = None
+    posterior_beta_cov: np.ndarray | None = None
+    # --- end source-heterogeneity OSSE (M8) ---
