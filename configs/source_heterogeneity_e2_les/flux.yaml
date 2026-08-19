@@ -27,6 +27,19 @@ flux:
     mode: instrument_netcdf
     level_index: 0
 
+  # --- source-heterogeneity OSSE (M6b) ---
+  # LES pseudo-obs come from `microhh/pseudo_obs.py`; the driver validates the
+  # instrument-side ObservationSpec against the entry below before sampling.
+  pseudo_obs:
+    source: les
+    les_run_dir: ../../runs/source_heterogeneity_e2_les/dispersion
+    expected_spec:
+      variable: concentration_ppm
+      unit: ppm
+      averaging_window_s: 60.0
+      height_m: 2.0
+      path_length_m: 200.0
+
   observations:
     default_sigma: 0.2
 

@@ -23,17 +23,15 @@ sweep:
     flux:       configs/source_heterogeneity_e2_les/flux.yaml
     analysis:   configs/source_heterogeneity_e2_les/analysis.yaml
 
-  # Anchor points (not a product grid); the sweep driver reads `anchors:` as
-  # a list of explicit override maps.
+  # --- source-heterogeneity OSSE (M6b) ---
+  # A single (L, CV) anchor point on the E1 phase diagram; the M6b LES sampler
+  # supplies pseudo-obs for a handful of nature seeds against a FLEXPART H.
   anchors:
-    - {dispersion.sources.config.covariance.L_m:  250, dispersion.sources.config.cv: 0.5, instrument.network: {kind: nested_space_filling, n:  8, seed: 0}}
-    - {dispersion.sources.config.covariance.L_m:  500, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n:  8, seed: 0}}
-    - {dispersion.sources.config.covariance.L_m: 1000, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n: 16, seed: 0}}
-    - {dispersion.sources.config.covariance.L_m: 1000, dispersion.sources.config.cv: 1.5, instrument.network: {kind: nested_space_filling, n: 16, seed: 0}}
+    - {dispersion.sources.config.covariance.L_m: 500, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n: 8, seed: 0}}
 
-  # A few realizations per anchor to bound sampling error.
+  # Nature-run seeds per anchor; the flux inversion re-runs against each.
   realizations:
-    dispersion.sources.config.seed: {range: [0, 5]}
+    dispersion.sources.config.seed: {range: [0, 4]}
 
   cache:
     reuse_H_across:

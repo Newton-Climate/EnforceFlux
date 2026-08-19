@@ -47,6 +47,9 @@ dispersion:
     receptor_height_m: 2.0
     heights_m: [100.0]
 
+  # --- source-heterogeneity OSSE (M6b) ---
+  # LES nature run for the E3 error-floor comparison; shares the same
+  # `microhh/lognormal_case.py` writer as E2.
   sources:
     generator: lognormal_field
     config:
@@ -58,6 +61,9 @@ dispersion:
       seed: 0
       basis: {coarsen: 8}
       prior: {mean_kg_s_per_cell: 0.0}
+      les_case:
+        template: runs/sacramento_paddy_ec_30m/paddy/microhh_case
+        scalar: ch4
 
   receptors:
     - {id: r_n,  x_m:    0.0, y_m:  650.0, alt_m: 3.0}

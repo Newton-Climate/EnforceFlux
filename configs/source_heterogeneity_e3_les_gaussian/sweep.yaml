@@ -22,14 +22,14 @@ sweep:
     flux:       configs/source_heterogeneity_e3_les_gaussian/flux.yaml
     analysis:   configs/source_heterogeneity_e3_les_gaussian/analysis.yaml
 
+  # --- source-heterogeneity OSSE (M6b) ---
+  # Single anchor on the E1 phase diagram; Gaussian inversion against LES
+  # pseudo-obs is expected to show the memo Fig 5 error floor.
   anchors:
-    - {dispersion.sources.config.covariance.L_m:  250, dispersion.sources.config.cv: 0.5, instrument.network: {kind: nested_space_filling, n:  8, seed: 0}}
-    - {dispersion.sources.config.covariance.L_m:  500, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n:  8, seed: 0}}
-    - {dispersion.sources.config.covariance.L_m: 1000, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n: 16, seed: 0}}
-    - {dispersion.sources.config.covariance.L_m: 1000, dispersion.sources.config.cv: 1.5, instrument.network: {kind: nested_space_filling, n: 16, seed: 0}}
+    - {dispersion.sources.config.covariance.L_m: 500, dispersion.sources.config.cv: 1.0, instrument.network: {kind: nested_space_filling, n: 8, seed: 0}}
 
   realizations:
-    dispersion.sources.config.seed: {range: [0, 5]}
+    dispersion.sources.config.seed: {range: [0, 4]}
 
   cache:
     reuse_H_across:
