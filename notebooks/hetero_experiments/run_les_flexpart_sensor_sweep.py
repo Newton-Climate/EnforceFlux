@@ -162,7 +162,7 @@ def make_figure() -> Path:
         ax.set_xscale("log", base=2); ax.set_yscale("log")
         ax.set_xticks(COUNTS, [str(v) for v in COUNTS]); ax.set_title(f"CV = {cv:g}")
         ax.set_xlabel("Number of sensors")
-    axes[0].set_ylabel(r"Total-flux error, $|E_Q|$")
+    axes[0].set_ylabel(r"Domain-total emission error, $|E_Q|$")
     handles = [plt.Line2D([], [], color=colors[L], marker="o", label=f"L={L} m") for L in LS]
     handles += [plt.Line2D([], [], color=".15", ls="-", label="Point"),
                 plt.Line2D([], [], color=".15", ls="--", label="400 m OP"),
@@ -177,15 +177,17 @@ def make_figure() -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pilot", action="store_true")
+    parser.add_argument("--figure-only", action="store_true")
     args = parser.parse_args()
     cases = [(200, 0.5)] if args.pilot else [(L, cv) for L in LS for cv in CVS]
     counts = (2,) if args.pilot else COUNTS
-    with tempfile.TemporaryDirectory(prefix="hetero_osse_") as tmp:
-        temp_dir = Path(tmp)
-        for technology in ("PS", "OP"):
-            for L, cv in cases:
-                for n in counts:
-                    execute_case(L, cv, n, technology, temp_dir)
+    if not args.figure_only:
+        with tempfile.TemporaryDirectory(prefix="hetero_osse_") as tmp:
+            temp_dir = Path(tmp)
+            for technology in ("PS", "OP"):
+                for L, cv in cases:
+                    for n in counts:
+                        execute_case(L, cv, n, technology, temp_dir)
     if not args.pilot:
         print(make_figure())
 
