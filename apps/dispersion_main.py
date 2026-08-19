@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Run any transport model from one YAML config.
+"""Run any transport model from one stage YAML.
 
 AERMOD, FLEXPART, and MicroHH all run from the same file — switch models by
-changing ``transport.model`` — and all return the same result shape, with
-simulation output written as a canonical ``concentration(time, y, x)`` NetCDF
-in ng m-3.
+changing ``dispersion.transport.model`` — and all return the same result
+shape, with simulation output written as a canonical
+``concentration(time, y, x)`` NetCDF in ng m-3.
+
+The dispersion stage is a source stage: it consumes no upstream RunDir.
+Its declared output roles are:
+
+* ``concentration_field`` — the canonical NetCDF (``concentration.nc``).
 
 Usage:
-    python apps/dispersion_main.py --config apps/dispersion_main.yaml
-    python apps/dispersion_main.py --config apps/dispersion_main.yaml --model flexpart
-    python apps/dispersion_main.py --config apps/dispersion_main.yaml --mode operator
-    python apps/dispersion_main.py --config apps/dispersion_main.yaml --dry-run
+    enforceflux dispersion --config configs/dispersion/single_source_aermod.yaml
+    enforceflux dispersion --config configs/dispersion/main.yaml --model flexpart
+    enforceflux dispersion --config configs/dispersion/main.yaml --mode operator
+    enforceflux dispersion --config configs/dispersion/main.yaml --dry-run
 """
 import argparse
-import dataclasses
 import sys
 from pathlib import Path
 
@@ -25,23 +29,18 @@ if str(SRC_DIR) not in sys.path:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run a transport model from a shared YAML config"
+        description="Run a transport model from a dispersion-stage YAML config"
     )
-    parser.add_argument("--config", required=True, help="Path to the transport YAML config")
+    parser.add_argument("--config", required=True, help="Path to the dispersion-stage YAML")
     parser.add_argument(
         "--model",
         choices=["aermod", "flexpart", "microhh"],
-        help="Override transport.model from the config.",
+        help="Override dispersion.transport.model from the config.",
     )
     parser.add_argument(
         "--mode",
         choices=["simulation", "operator"],
-        help="Override transport.mode from the config.",
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        help="Override the canonical output NetCDF path.",
+        help="Override dispersion.transport.mode from the config.",
     )
     parser.add_argument(
         "--dry-run",
@@ -60,28 +59,42 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    from enforceflux.runs import load_stage_config, open_run_dir
     from enforceflux.transport import TransportRunConfig, run_transport
 
     args = build_parser().parse_args()
 
-    config_path = Path(args.config).resolve()
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+    stage_cfg = load_stage_config(args.config, expected_stage="dispersion")
 
-    run = TransportRunConfig.from_file(config_path)
-    overrides = {}
-    if args.model:
-        overrides["model"] = args.model
-    if args.mode:
-        overrides["mode"] = args.mode
-    if args.output:
-        output = args.output if args.output.is_absolute() else (Path.cwd() / args.output)
-        overrides["output"] = dataclasses.replace(run.output, path=output.resolve())
-    if overrides:
-        run = dataclasses.replace(run, **overrides)
+    block = dict(stage_cfg.block)
+    if args.model or args.mode:
+        transport = dict(block.get("transport") or {})
+        if args.model:
+            transport["model"] = args.model
+        if args.mode:
+            transport["mode"] = args.mode
+        block["transport"] = transport
 
-    print("EnforceFlux dispersion_main")
-    print(f"Config     : {config_path}")
+    run_dir = open_run_dir(
+        stage="dispersion",
+        run_name=stage_cfg.run_name,
+        outputs_root=stage_cfg.outputs_root,
+        inputs={k: str(v) for k, v in stage_cfg.inputs.items()},
+    )
+    run_dir.snapshot_config(stage_cfg.snapshot)
+
+    output_path = run_dir.path("concentration.nc")
+
+    run = TransportRunConfig.from_dict(
+        block,
+        base_dir=stage_cfg.yaml_dir,
+        output_path=output_path,
+    )
+
+    print("EnforceFlux dispersion")
+    print(f"Config     : {stage_cfg.yaml_path}")
+    print(f"Run name   : {stage_cfg.run_name}")
+    print(f"Run dir    : {run_dir.root}")
     print(f"Model      : {run.model}")
     print(f"Mode       : {run.mode}")
     print(f"Sources    : {len(run.sources)}")
@@ -117,6 +130,16 @@ def main() -> None:
             name = label if isinstance(label, str) else " / ".join(str(p) for p in label)
             values = "  ".join(f"{v:14.5g}" for v in row)
             print(f"{name:>34s}  {values}")
+
+    if output_path.is_file():
+        run_dir.record_output("concentration.nc", role="concentration_field")
+        contract = run_dir.finalize()
+        print()
+        print(f"Manifest   : {contract['manifest']}")
+    else:
+        print()
+        print(f"(no {output_path.name} written — dry-run or model prepared inputs only; "
+              f"manifest not finalized)")
 
 
 if __name__ == "__main__":

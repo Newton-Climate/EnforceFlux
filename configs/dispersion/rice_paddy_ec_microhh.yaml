@@ -1,0 +1,91 @@
+# 30-minute high-frequency LES for the eddy-covariance operator.
+# The analysis window follows a 30-minute turbulence spin-up.
+# Target of enforceflux.microhh.ec_operator (reduce="ec_covariance" in the
+# microhh transport plugin). Reference schema in configs/dispersion/main.yaml.
+
+stage: dispersion
+run:
+  name: rice_paddy_ec_microhh
+inputs: {}
+
+dispersion:
+  transport:
+    model: microhh
+    mode: simulation
+    start: "2020-03-31T18:00:00"
+    end:   "2020-03-31T21:00:00"
+
+  # Inline synthetic met over the 30-min EC window (18:00-21:00 UTC).
+  # Evening: turbulence collapsing, stable stratification setting in.
+  met:
+    records:
+      - {time: "2020-03-31T18:00", wind_speed_m_s: 3.0, wind_direction_deg: 200.0,
+         temperature_k: 292.0, mixing_height_m: 500.0,
+         friction_velocity_m_s: 0.28, sensible_heat_flux_w_m2:  60.0}
+      - {time: "2020-03-31T19:30", wind_speed_m_s: 2.4, wind_direction_deg: 205.0,
+         temperature_k: 289.0, mixing_height_m: 300.0,
+         friction_velocity_m_s: 0.22, sensible_heat_flux_w_m2:   0.0}
+      - {time: "2020-03-31T21:00", wind_speed_m_s: 1.8, wind_direction_deg: 210.0,
+         temperature_k: 287.0, mixing_height_m: 150.0,
+         friction_velocity_m_s: 0.15, sensible_heat_flux_w_m2: -30.0}
+
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -4300.0
+    x_max:  4300.0
+    y_min: -4450.0
+    y_max:  4450.0
+    spacing_m: 100.0
+    receptor_height_m: 4.0
+
+  sources:
+    - id: paddy
+      x_m: 0.0
+      y_m: 0.0
+      alt_m: 0.0
+      emission_rate_kg_s: 1.35e-4
+
+  # Four candidate EC locations: within-field, downwind edge, downwind fetch,
+  # and upwind control. Column files contain w, CH4, ustar, and Obukhov length.
+  receptors:
+    - {id: field_centre, x_m:    0.0, y_m:    0.0, alt_m: 4.0}
+    - {id: edge_down,    x_m:  -51.3, y_m:  141.0, alt_m: 4.0}
+    - {id: fetch_350,    x_m: -119.7, y_m:  328.9, alt_m: 4.0}
+    - {id: upwind,       x_m:   51.3, y_m: -141.0, alt_m: 4.0}
+
+  microhh:
+    executable: ../../microhh/build/microhh
+    num_workers: 4
+    surface_flux_sources:
+      paddy: {side_m: 300.0}
+
+    grid:
+      itot: 192
+      jtot: 96
+      ktot: 96
+      xsize: 3840.0
+      ysize: 1920.0
+      zsize: 2048.0
+      dz_surface_m: 2.0
+      dz_max_m: 32.0
+
+    source_x0: 960.0
+    cross_xy_m: 3.1
+    cross_xz_m: 960.0
+
+    spinup_seconds: 1800
+    runtime_seconds: 1800
+
+    # Keep high-frequency output only where EC needs it. A shared 2 s cadence
+    # would create hundreds of unnecessary full cross-sections.
+    sampletime: 10
+    column_sampletime: 2
+    stats_sampletime: 10
+    cross_sampletime: 300
+    met_reduce: mean
+
+    extra_ini:
+      dump:
+        swdump: 1
+        dumplist: ch4

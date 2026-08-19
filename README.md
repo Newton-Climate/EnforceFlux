@@ -88,58 +88,77 @@ sudo apt-get install gfortran libeccodes-dev libnetcdf-dev libnetcdff-dev
 
 ## Apps
 
-The `apps/` directory contains end-to-end pipeline scripts driven by YAML configs. Run any app from the repo root with `python apps/<script>.py --config apps/<config>.yaml`.
+The unified `enforceflux` CLI dispatches per-stage subcommands. YAML configs live under `configs/<stage>/`; the underlying drivers live under `apps/<stage>_main.py` and can still be invoked directly if you prefer.
 
-### `met_main.py` — ERA5 downloader
+### `met` — ERA5 downloader
 Downloads ERA5 for a specified date range and geographic bounding box. Outputs FLEXPART-ready GRIB files and an `AVAILABLE` index.
 
 ```bash
-python apps/met_main.py --config apps/met_main.yaml
+enforceflux met --config configs/met/main.yaml
 ```
 
-### `dispersion_main.py` — Any transport model, one config
+### `dispersion` — Any transport model, one config
 
 ```bash
-python apps/dispersion_main.py --config apps/dispersion_main.yaml --model aermod
+enforceflux dispersion --config configs/dispersion/main.yaml --model aermod
 ```
 
 Runs AERMOD, FLEXPART, or MicroHH from the shared schema described in
 [Running a transport model](#running-a-transport-model), writing a canonical
 `concentration(time, y, x)` NetCDF regardless of backend.
 
-### `flux_main.py` — Flux inversion
+### `flux` — Flux inversion
 Runs the full inversion pipeline: loads a pre-computed G matrix + prior emissions → Bayesian posterior → flux estimates with uncertainty. Outputs posterior flux maps and uncertainty reduction statistics.
 
 ```bash
-python apps/flux_main.py --config apps/flux_main.yaml
+enforceflux flux --config configs/flux/main.yaml
 ```
 
-### `analysis_main.py` — Information content analysis
+### `analysis` — Information content analysis
 Takes an existing transport Jacobian G and sensor configuration and computes DFS, averaging kernel, posterior covariance, and sensor ablation rankings.
 
 ```bash
-python apps/analysis_main.py --config apps/analysis_main.yaml
+enforceflux analysis --config configs/analysis/main.yaml
 ```
 
-### `instrument_main.py` — Instrument OSSE
+### `instrument` — Instrument OSSE
 Single-source instrument sensitivity experiment. Builds an analytical Gaussian-plume G for a configurable sensor network, runs the full information content analysis, and generates diagnostic figures (footprints, DFS spatial map, posterior uncertainty, sensor ablation).
 
 ```bash
-python apps/instrument_main.py --config apps/instrument_main.yaml
+enforceflux instrument --config configs/instrument/main.yaml
+```
+
+### `obs` — Real-observation ingress *(planned)*
+Reserved subcommand. Parses a user-supplied observation file into the same `obs.parquet` schema the `instrument` stage produces so `flux` can consume real observations without knowing the difference. Ingress wiring lands with the run-artifact contract (D2b).
+
+### `osse` — Legacy end-to-end OSSE
+Single-JSON-config OSSE covering source → instrument → transport → inversion → metrics. Kept for backward compatibility; new work should compose the per-stage subcommands.
+
+```bash
+enforceflux osse --config examples/quickstart_config.json
 ```
 
 ### Examples
 
 Standalone demo scripts live in `examples/`:
 
+Examples/ holds Python demos for the three canonical scenarios (single point source, rice paddy, optical scintillation). Runnable configs for each live in `configs/dispersion/<scenario>_{aermod,flexpart,microhh}.yaml`.
+
 | Script | Description |
 |---|---|
-| `single_source_instrument_demo.py` | 3-sensor open-path network, 500 m from a point source. Gaussian plume G, Woodbury ICA. |
-| `sacramento_valley_2020.py` | Multi-source Sacramento Valley OSSE; April vs. July met comparison. |
-| `gaussian_plume_single_source_demo.py` | Minimal FLEXPART plume forward simulation with 1 source. |
 | `aermod_single_source_demo.py` | AERMOD Jacobian, concentration field, and meteorological sensitivities via autodiff. |
+| `microhh_sacramento_demo.py` | MicroHH LES for a single Sacramento point source. |
+| `microhh_vs_flexpart_vs_gaussian.py` | Same single-source scenario through all three transport models. |
+| `microhh_point_vs_diffuse.py` | Point leak vs diffuse paddy comparison in MicroHH. |
+| `microhh_paddy_spatial_basis.py` | Rice-paddy spatial-basis projection for the inversion state vector. |
+| `microhh_paddy_animation.py` | Time-lapse rendering of the paddy scenario. |
+| `optical_cn2_fine_run.py` | Fine-grid MicroHH run for CN² refractive-index structure. |
+| `optical_scintillation_psd.py` | Optical scintillation power-spectral-density diagnostics. |
+| `microhh_open_path_operator.py` | Path-integrated open-path optical operator on the paddy scenario. |
+| `plot_open_path_timeseries.py` | Timeseries plot for the open-path operator output. |
+| `instrument_operator_demo.py` | Standalone instrument-operator walkthrough. |
 | `era5_driven_models.py` | One ERA5 window converted into AERMOD, MicroHH, and FLEXPART forcing. |
-| `osse_25kg_leak_demo.py` | OSSE for a 25 kg hr⁻¹ leak detection scenario. |
+| `quickstart.py` + `quickstart_config.json` | Minimal end-to-end OSSE via the legacy `enforceflux osse` path. |
 
 ---
 
@@ -271,9 +290,9 @@ A fourth request downloads time-invariant fields (land-sea mask, orography) on t
 Every transport model runs from one YAML, and the model is a single line in it:
 
 ```bash
-python apps/dispersion_main.py --config apps/dispersion_main.yaml
-python apps/dispersion_main.py --config apps/dispersion_main.yaml --model flexpart
-python apps/dispersion_main.py --config apps/dispersion_main.yaml --mode operator
+enforceflux dispersion --config configs/dispersion/main.yaml
+enforceflux dispersion --config configs/dispersion/main.yaml --model flexpart
+enforceflux dispersion --config configs/dispersion/main.yaml --mode operator
 ```
 
 Everything above the model blocks is **shared and authoritative** — meteorology,
@@ -483,13 +502,13 @@ Two source types are supported:
 ```python
 from enforceflux.flexpart import FlexpartSimulation
 
-sim = FlexpartSimulation.from_yaml("examples/simulation_config.yaml")
+sim = FlexpartSimulation.from_yaml("configs/dispersion/simulation_config.yaml")
 output_nc = sim.run()   # returns path to output NetCDF
 ```
 
 ### YAML config reference
 
-A fully-annotated example lives at [`examples/simulation_config.yaml`](examples/simulation_config.yaml).
+A fully-annotated example lives at [`configs/dispersion/simulation_config.yaml`](configs/dispersion/simulation_config.yaml).
 
 #### `flexpart` — binary and directories
 
@@ -607,10 +626,12 @@ apps/
 examples/
     single_source_instrument_demo.py
     sacramento_valley_2020.py
-    gaussian_plume_single_source_demo.py
     aermod_single_source_demo.py
+    microhh_sacramento_demo.py
+    microhh_vs_flexpart_vs_gaussian.py
+    optical_cn2_fine_run.py
     era5_driven_models.py
-    osse_25kg_leak_demo.py
+    quickstart.py
 
 data/
     bottomup/               # EPA GHGI gridded CH4 NetCDF

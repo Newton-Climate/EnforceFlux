@@ -202,12 +202,12 @@ def build_ini(cfg: MicroHHConfig) -> str:
 
     a("[stats]")
     a("swstats=1")
-    a(f"sampletime={cfg.sampletime_s}")
+    a(f"sampletime={cfg.stats_sampletime_s or cfg.sampletime_s:g}")
     a("")
 
     a("[cross]")
     a("swcross=1")
-    a(f"sampletime={cfg.sampletime_s}")
+    a(f"sampletime={cfg.cross_sampletime_s or cfg.sampletime_s:g}")
     a(f"crosslist={name},{name}_path")
     a(f"xy={xy_level:g}")
     a(f"xz={xz_slice:g}")
@@ -215,7 +215,7 @@ def build_ini(cfg: MicroHHConfig) -> str:
 
     a("[column]")
     a("swcolumn=1")
-    a(f"sampletime={cfg.sampletime_s}")
+    a(f"sampletime={cfg.column_sampletime_s or cfg.sampletime_s:g}")
     a(f"coordinates[x]={_fmt_list(col_x)}")
     a(f"coordinates[y]={_fmt_list(col_y)}")
     a("")

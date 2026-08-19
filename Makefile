@@ -1,4 +1,5 @@
-.PHONY: env install install-dev install-flexpart install-microhh figures lint format test clean
+.PHONY: env install install-dev install-flexpart install-microhh figures lint format test clean \
+        install-sherlock install-flexpart-sherlock install-microhh-sherlock check-sherlock-env
 
 VENV ?= .venv
 PYTHON ?= $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
@@ -80,8 +81,13 @@ install-microhh:
 		echo "MicroHH repo already present at $(MICROHH_DIR)/"; \
 		git -C "$(MICROHH_DIR)" submodule update --init --recursive; \
 	fi
-	@# Copy the cross-platform cmake config so the build can find it.
-	cp installations/microhh/enforceflux.cmake "$(MICROHH_DIR)/config/enforceflux.cmake"
+	@# Copy the matching cmake system config (installations/microhh/<SYST>.cmake)
+	@# into the MicroHH tree so `-DSYST=<SYST>` can find it. Upstream presets
+	@# already ship in microhh/config/ and are used as-is when there is no
+	@# EnforceFlux-maintained override.
+	@if [ -f "installations/microhh/$(MICROHH_SYST).cmake" ]; then \
+		cp "installations/microhh/$(MICROHH_SYST).cmake" "$(MICROHH_DIR)/config/$(MICROHH_SYST).cmake"; \
+	fi
 	@# USEMPI selects the compilers (mpicxx vs clang++), which CMake refuses to
 	@# change in place — drop a cache configured the other way.
 	@if [ -f "$(MICROHH_DIR)/build/CMakeCache.txt" ] && \
@@ -113,6 +119,31 @@ format:
 MARKERS ?= not flexpart_integration and not microhh_integration
 test: install-dev
 	$(PYTHON) -m pytest tests/ -v -m "$(MARKERS)" --cov=src --cov-report=term-missing
+
+# ── Sherlock (Stanford SRCC) ─────────────────────────────────────────────────
+# All Sherlock targets require the module env loaded first:
+#   source installations/sherlock/modules.sh
+# That script exports SHERLOCK=1, ECCODES_PREFIX, NETCDF_PREFIX, NETCDFF_*,
+# CPATH, and LIBRARY_PATH — the same variables the existing targets consume.
+check-sherlock-env:
+	@if [ "$$SHERLOCK" != "1" ]; then \
+		echo "ERROR: Sherlock env not loaded. Run:"; \
+		echo "    source installations/sherlock/modules.sh"; \
+		echo "then re-run this make target."; \
+		exit 1; \
+	fi
+
+# Full Sherlock install: FLEXPART + MicroHH (MPI) + Python package with all extras.
+install-sherlock: check-sherlock-env install-flexpart-sherlock install-microhh-sherlock
+	$(PIP) install -e ".[all]"
+
+# FLEXPART on Sherlock: same makefile_gfortran, prefixes come from the module env.
+install-flexpart-sherlock: check-sherlock-env
+	$(MAKE) install-flexpart
+
+# MicroHH on Sherlock: use the sherlock.cmake system config and MPI toolchain.
+install-microhh-sherlock: check-sherlock-env
+	$(MAKE) install-microhh MICROHH_SYST=sherlock MICROHH_MPI=1
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

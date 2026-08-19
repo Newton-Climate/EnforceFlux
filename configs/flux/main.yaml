@@ -1,0 +1,97 @@
+# ============================================================================
+# Flux inversion — flux stage
+# ============================================================================
+#   enforceflux flux --config configs/flux/main.yaml
+#
+# Builds the transport matrix G from the upstream dispersion RunDir and solves
+# for the posterior fluxes by optimal estimation:
+#
+#     x_hat = x_a + S_a G^T (G S_a G^T + S_e)^-1 (y - G x_a)
+#
+# TIME-RESOLVED: the state x is an emission-rate TIME SERIES per source, one
+# window per simulation timestep. The simulation is a sustained unit-rate
+# release, so its per-timestep field is a transport STEP response; G is the
+# block-Toeplitz convolution of the first-differenced (impulse) kernel.
+#
+# ── STAGE INPUTS/OUTPUTS ────────────────────────────────────────────────────
+# Consumes: dispersion.concentration_field   (always)
+#           obs.obs                          (only when input.mode = instrument_netcdf)
+# Produces: flux.summary    (summary.json)
+#           flux.matrices   (matrices.npz)
+#           flux.posterior  (posterior.csv)
+#
+# Run the two upstream stages first, e.g.:
+#     enforceflux dispersion --config configs/dispersion/single_source_aermod.yaml
+#     enforceflux instrument --config configs/instrument/main.yaml
+# then edit the inputs paths below (or reuse this pair verbatim).
+# ============================================================================
+
+stage: flux
+
+run:
+  name: main
+
+inputs:
+  # Dispersion RunDir supplies concentration_field for building G.
+  dispersion: ../../runs/single_source_aermod/dispersion
+  # Obs RunDir (from instrument or obs stage) supplies y + noise variance
+  # when flux.input.mode = instrument_netcdf. Omit for simulation_receptors mode.
+  obs: ../../runs/main/instrument
+
+flux:
+
+  # ─── input: where G, y and noise variance come from ───────────────────────
+  input:
+    # simulation_receptors — sample the dispersion field at the `receptors:`
+    #                        listed below; observations come from this file.
+    # instrument_netcdf    — take y and the noise variance from `inputs.obs`,
+    #                        i.e. include the instrument operator and its real
+    #                        noise model. Preferred for realistic OSSEs;
+    #                        `receptors:` is then ignored.
+    mode: instrument_netcdf
+
+    # variable_name: concentration    # [opt] auto-detects canonical + FLEXPART names
+    level_index: 0
+
+  # ─── receptors: only used when input.mode = simulation_receptors ──────────
+  # For observations.mode = provided, `observed` is a TIME SERIES whose length
+  # must equal the dispersion NetCDF's number of timesteps; `sigma` is a scalar
+  # (constant in time) or a matching-length list.
+  # receptors:
+  #   - id: rec_north
+  #     lon: -121.75
+  #     lat: 39.156
+  #     observed: [1.2, 1.3, 1.5, 1.6]
+  #     sigma: 0.2
+
+  # ─── observations: default noise floor for instrument mode ────────────────
+  observations:
+    default_sigma: 0.2
+
+  # ─── inversion: prior (x_a, S_a) and solver ───────────────────────────────
+  inversion:
+    # linear    — closed-form OE (oe_from_linear). Correct when observations
+    #             are linear in flux, which they are for a passive tracer.
+    # nonlinear — iterative optimize_oe with F(x) = G @ x. Slower; same answer
+    #             for a linear forward.
+    method: linear
+
+    # Prior flux: scalar (all sources/windows), length n_sources, or an
+    # (n_sources x n_flux) nested list.
+    prior_flux_kg_s: 0.0
+
+    # Prior covariance S_a. Precedence:
+    #   1. prior_covariance_diag   — per-source variances (length n_sources
+    #                                or (n_sources x n_flux))
+    #   2. prior_variance          — scalar; same for every source
+    #   3. prior_sigma_fraction * |x_a|  — degenerates to zero when x_a = 0,
+    #                                which would pin the solution to the prior.
+    prior_variance: 1.0e-8
+    prior_sigma_fraction: 0.5
+
+    # Nonlinear solver knobs (only used when method = nonlinear).
+    n_iter: 20
+    lam0: 1.0e-3
+    lam_factor: 10.0
+    eps: 1.0e-4
+    fd_step: 1.0e-5

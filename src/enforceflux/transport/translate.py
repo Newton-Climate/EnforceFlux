@@ -327,6 +327,11 @@ def write_microhh_config(
             "spinup_seconds": int(options.get("spinup_seconds", 1800)),
             "runtime_seconds": int(options.get("runtime_seconds", 3600)),
             "sampletime": int(options.get("sampletime", 60)),
+            **{
+                key: float(options[key])
+                for key in ("stats_sampletime", "cross_sampletime", "column_sampletime")
+                if key in options
+            },
         },
         "grid": {
             "itot": itot, "jtot": jtot, "ktot": ktot,

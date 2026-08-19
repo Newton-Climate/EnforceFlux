@@ -317,8 +317,23 @@ class TransportRunConfig:
     # ── Loading ──────────────────────────────────────────────────────────────
 
     @classmethod
-    def from_dict(cls, blob: dict[str, Any], base_dir: Path = Path(".")) -> "TransportRunConfig":
-        _require(blob, ["transport", "domain", "sources", "output"], "config")
+    def from_dict(
+        cls,
+        blob: dict[str, Any],
+        base_dir: Path = Path("."),
+        *,
+        output_path: Path | None = None,
+    ) -> "TransportRunConfig":
+        """Build from a naked transport blob (no stage wrapper).
+
+        ``output_path`` overrides the file's ``output.path`` when given —
+        used by the stage-YAML flow, where the RunDir owns the artifact
+        location and configs omit ``output:`` entirely.
+        """
+        required = ["transport", "domain", "sources"]
+        if output_path is None:
+            required.append("output")
+        _require(blob, required, "config")
         transport = blob["transport"]
         _require(transport, ["model"], "transport")
 
@@ -328,6 +343,16 @@ class TransportRunConfig:
         model_options = {m: dict(blob.get(m) or {}) for m in MODELS}
         _reject_shadowed_keys(model_options)
 
+        if output_path is not None:
+            output_blob = dict(blob.get("output") or {})
+            output = RunOutput(
+                path=output_path,
+                compress=bool(output_blob.get("compress", True)),
+                keep_native=bool(output_blob.get("keep_native", True)),
+            )
+        else:
+            output = RunOutput.from_dict(blob["output"], base_dir)
+
         return cls(
             model=model,  # type: ignore[arg-type]
             mode=mode,  # type: ignore[arg-type]
@@ -335,7 +360,7 @@ class TransportRunConfig:
             sources=tuple(RunSource.from_dict(s) for s in blob["sources"]),
             receptors=tuple(RunReceptor.from_dict(r) for r in (blob.get("receptors") or [])),
             met=dict(blob.get("met") or {}),
-            output=RunOutput.from_dict(blob["output"], base_dir),
+            output=output,
             start=_parse_time(transport["start"]) if "start" in transport else None,
             end=_parse_time(transport["end"]) if "end" in transport else None,
             model_options=model_options,

@@ -14,6 +14,13 @@ from enforceflux.microhh.case import (
     write_input_nc,
 )
 from enforceflux.microhh.geometry import BoxProjection
+from enforceflux.microhh.ec_operator import (
+    LESColumnSeries,
+    LESECObservationOperatorResult,
+    build_ec_observation_operator_from_les,
+    build_ec_observation_operator_from_microhh_runs,
+    read_microhh_ec_columns,
+)
 from enforceflux.microhh.output import (
     ReceptorSeries,
     read_cross_xy,
@@ -44,8 +51,12 @@ __all__ = [
     "MicroHHReceptor",
     "MicroHHRunner",
     "MicroHHRunResult",
+    "LESColumnSeries",
+    "LESECObservationOperatorResult",
     "ReceptorSeries",
     "build_ini",
+    "build_ec_observation_operator_from_les",
+    "build_ec_observation_operator_from_microhh_runs",
     "decompose_workers",
     "gaussian_plume_ground_conc",
     "initial_profiles",
@@ -54,6 +65,7 @@ __all__ = [
     "load_microhh_config",
     "read_cross_xy",
     "read_cross_xz",
+    "read_microhh_ec_columns",
     "read_receptor_series",
     "write_case",
     "write_input_nc",

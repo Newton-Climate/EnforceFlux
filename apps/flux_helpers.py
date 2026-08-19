@@ -20,17 +20,23 @@ def find_var(ds, candidates: tuple[str, ...]) -> str | None:
 
 
 def sample_nearest(field_2d: np.ndarray, lons: np.ndarray, lats: np.ndarray, lon: float, lat: float) -> float:
-    iy = int(np.argmin(np.abs(lats - lat)))
-    ix = int(np.argmin(np.abs(lons - lon)))
-
-    if field_2d.shape == (len(lats), len(lons)):
+    """Nearest-grid sample. Handles 1-D (FLEXPART) or 2-D (canonical) coords."""
+    lons = np.asarray(lons)
+    lats = np.asarray(lats)
+    if lons.ndim == 2 and lats.ndim == 2 and lons.shape == lats.shape == field_2d.shape:
+        d2 = (lons - lon) ** 2 + (lats - lat) ** 2
+        iy, ix = np.unravel_index(int(np.argmin(d2)), field_2d.shape)
         return float(field_2d[iy, ix])
-    if field_2d.shape == (len(lons), len(lats)):
-        return float(field_2d[ix, iy])
-
+    if lons.ndim == 1 and lats.ndim == 1:
+        iy = int(np.argmin(np.abs(lats - lat)))
+        ix = int(np.argmin(np.abs(lons - lon)))
+        if field_2d.shape == (len(lats), len(lons)):
+            return float(field_2d[iy, ix])
+        if field_2d.shape == (len(lons), len(lats)):
+            return float(field_2d[ix, iy])
     raise ValueError(
         "Unable to map concentration field to lat/lon axes. "
-        f"Field shape={field_2d.shape}, lat={len(lats)}, lon={len(lons)}"
+        f"Field shape={field_2d.shape}, lat shape={lats.shape}, lon shape={lons.shape}"
     )
 
 
@@ -54,7 +60,8 @@ def extract_field_for_release(
 
     idx: list[object] = []
     for d in dims:
-        if d in ("latitude", "lat", "ylat", "longitude", "lon", "xlon"):
+        # Canonical dims: y, x. FLEXPART native: latitude, longitude.
+        if d in ("latitude", "lat", "ylat", "y", "longitude", "lon", "xlon", "x"):
             idx.append(slice(None))
         elif d in ("time", "times"):
             idx.append(time_index)
@@ -180,17 +187,13 @@ def broadcast_state(values, n_sources: int, n_flux: int, *, what: str) -> np.nda
 
 
 def prepare_sim_transport(ds, variable_name_cfg: str | None):
+    # Canonical name first, then FLEXPART native ones.
+    default_candidates = (
+        "concentration", "ch4_mixing_ratio", "ch4_concentration",
+        "spec001_mr", "spec001",
+    )
     var_candidates = (
-        str(variable_name_cfg),
-        "ch4_mixing_ratio",
-        "ch4_concentration",
-        "spec001_mr",
-        "spec001",
-    ) if variable_name_cfg else (
-        "ch4_mixing_ratio",
-        "ch4_concentration",
-        "spec001_mr",
-        "spec001",
+        (str(variable_name_cfg), *default_candidates) if variable_name_cfg else default_candidates
     )
     vname = find_var(ds, tuple(var_candidates))
     if vname is None:

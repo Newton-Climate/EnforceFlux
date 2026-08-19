@@ -1,0 +1,96 @@
+# ============================================================================
+# Fine-grid MicroHH LES for OPTICAL C_n^2 / scintillation over an open path.
+# ============================================================================
+#   enforceflux dispersion --config configs/dispersion/optical_scintillation_microhh.yaml
+#
+# Purpose: resolve the surface-layer temperature turbulence that sets the
+# refractive-index structure parameter C_n^2 along a 300 m open beam at ~20 m,
+# then feed examples/optical_scintillation_psd.py.
+#
+# Why these numbers:
+#   * Optical C_n^2 is driven by the TEMPERATURE structure parameter C_T^2.
+#     To resolve the flux-carrying eddies at beam height z ~ 20 m you need
+#     dx <= z/5 ~ 4 m. The 100 m demo grid (dx ~ 5z) filters them out and
+#     gives only a lower bound on C_n^2.
+#   * Vertical grid is STRETCHED (dz ~ 2 m at the surface) so the near-surface
+#     temperature gradient — which dominates C_T^2 — is actually resolved.
+#   * The scintillation TEMPORAL spectrum (knee ~100 Hz) is optics, not LES:
+#     0.5 s output only fixes C_n^2 and its slow (< ~0.4 Hz) envelope. That
+#     is all the LES needs to provide; the fast PSD is analytic (Rytov).
+#
+# Cost: ~480x240x128 ~ 14.7M cells, dx=4 m. Per simulated second this is
+# ~60x the 100 m single-source run. Drive it with MPI (num_workers >= 4)
+# and a short runtime; the companion examples/optical_cn2_fine_run.py runs it
+# in two phases (spin-up -> restart -> 0.5 s sampling window) and injects the
+# temperature (`th`) cross-sections that the base writer does not emit.
+# ============================================================================
+
+stage: dispersion
+run:
+  name: optical_scintillation_microhh
+inputs: {}
+
+dispersion:
+  transport:
+    model: microhh
+    mode: simulation
+    start: "2020-03-31T12:00:00"    # local midday: strongest surface heating
+    end:   "2020-03-31T13:00:00"    # 1 hour bracket; runtime tunes below
+
+  # Inline midday convective met — strong surface heating drives large C_T^2.
+  met:
+    records:
+      - {time: "2020-03-31T12:00", wind_speed_m_s: 3.0, wind_direction_deg: 270.0,
+         temperature_k: 300.0, mixing_height_m: 1200.0,
+         friction_velocity_m_s: 0.35, sensible_heat_flux_w_m2: 300.0,
+         surface_roughness_m: 0.1}
+      - {time: "2020-03-31T13:00", wind_speed_m_s: 3.2, wind_direction_deg: 270.0,
+         temperature_k: 301.0, mixing_height_m: 1300.0,
+         friction_velocity_m_s: 0.36, sensible_heat_flux_w_m2: 320.0,
+         surface_roughness_m: 0.1}
+
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    # 1.92 x 0.96 km at 4 m spacing => 480 x 240 cells.
+    x_min: -960.0
+    x_max:  960.0
+    y_min: -480.0
+    y_max:  480.0
+    spacing_m: 4.0
+    receptor_height_m: 20.0        # beam height
+
+  sources:
+    - id: point
+      x_m: -672.0                  # 0.15 * xsize upwind of centre
+      y_m: 0.0
+      alt_m: 20.0
+      emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr (scalar is passive)
+
+  # A column at the beam centre for a point temperature time series.
+  receptors:
+    - {id: beam_midspan, x_m: 0.0, y_m: 0.0, alt_m: 20.0}
+
+  microhh:
+    executable: ../../microhh/build/microhh
+    num_workers: 4
+    grid:
+      itot: 480
+      jtot: 240
+      ktot: 128
+      xsize: 1920.0
+      ysize:  960.0
+      zsize: 1536.0
+      dz_surface_m: 2.0       # fine near surface where C_T^2 is largest
+      dz_max_m: 32.0
+
+    source_sigma_m: 8.0       # ~2 dx on the fine grid
+    spinup_seconds: 3600      # grow turbulence
+    runtime_seconds: 30       # short scintillation-sampling window
+
+    # Fast column output for the PSD envelope; sparser stats/cross to save disk.
+    sampletime: 30
+    column_sampletime: 0.5     # 0.5 s -> Nyquist 1 Hz (C_n^2 envelope)
+    stats_sampletime: 30
+    cross_sampletime: 5
+    met_reduce: mean

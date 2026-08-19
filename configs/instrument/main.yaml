@@ -1,0 +1,88 @@
+# ============================================================================
+# Instrument stage — sample a dispersion concentration field with real sensors.
+# ============================================================================
+#   enforceflux instrument --config configs/instrument/main.yaml
+#
+# Applies each deployed sensor's forward operator + heteroscedastic noise
+# model:   y = H(field) + eps
+# and emits an ``obs`` NetCDF (canonical time × instrument) plus a flat
+# per-(time, sensor) CSV under runs/<run.name>/instrument/.
+#
+# ── STAGE INPUTS/OUTPUTS ────────────────────────────────────────────────────
+# Consumes: dispersion.concentration_field (concentration.nc)
+# Produces: obs      (obs.nc)   — canonical, downstream of flux
+#           obs_csv  (obs.csv)  — flat, human-readable
+#
+# `inputs.dispersion:` must point at a completed dispersion RunDir. Run one
+# first, e.g.:
+#     enforceflux dispersion --config configs/dispersion/single_source_aermod.yaml
+# then either edit the path below or reuse this pair verbatim.
+# ============================================================================
+
+stage: instrument
+
+run:
+  name: main
+
+inputs:
+  # The dispersion RunDir whose concentration_field this stage samples.
+  dispersion: ../../runs/single_source_aermod/dispersion
+
+instrument:
+
+  # ─── slice of the concentration field to sample ───────────────────────────
+  # Variable name auto-detected when omitted; the auto list is:
+  #   concentration, ch4_mixing_ratio, ch4_concentration, spec001_mr, spec001
+  # (canonical then FLEXPART native). Set `variable_name:` only to override.
+  # variable_name: concentration
+  level_index:   0   # vertical level (0 = surface layer)
+  release_index: 0   # release/pointspec index (0 unless per-source output)
+
+  # ─── noise model ──────────────────────────────────────────────────────────
+  operator:
+    # Fix for reproducible OSSEs; change to generate independent realisations
+    # of the same scenario.
+    random_seed: 42
+
+  # ─── the deployed sensors ─────────────────────────────────────────────────
+  # tech_id selects the technology (noise, detection limit, operator type);
+  # mode selects the operating-condition row within it.
+  #
+  #   tech_id  operator            observable
+  #   OP       line_integral         concentration_ppm      open-path laser
+  #   EC       ec_footprint          flux_nmol_m2_s         eddy covariance
+  #   CH       point_flux            flux_nmol_m2_s         chamber
+  #   AIR      column_aircraft       column_ppb             aircraft column
+  #   MSAT     column_satellite      column_ppb             satellite column
+  #   LP_ESN   multi_path_inversion  emission_rate_kg_hr    multi-path network
+  #   IM_LS    plume_imaging         emission_rate_kg_hr    imaging
+  #   BP_GML   lidar_path_integral   emission_rate_kg_hr    active LiDAR
+  #
+  # MODES: only LP_ESN, IM_LS and BP_GML define all three of
+  # good | challenging | bad. OP, EC, CH, AIR and MSAT are `good`-only.
+  #
+  # Positions are lon/lat (the field NetCDF is on lon/lat axes).
+  instruments:
+    - id: OP_north
+      tech_id: OP
+      mode: good
+      lon: -121.75
+      lat: 39.156          # ~650 m north of the leak
+      z: 3.0
+      response_scale: 1.0
+
+    - id: OP_east
+      tech_id: OP
+      mode: good
+      lon: -121.743        # ~600 m east of the leak
+      lat: 39.150
+      z: 3.0
+      response_scale: 1.0
+
+    - id: OP_south
+      tech_id: OP
+      mode: good
+      lon: -121.75
+      lat: 39.144          # ~650 m south of the leak
+      z: 3.0
+      response_scale: 1.0

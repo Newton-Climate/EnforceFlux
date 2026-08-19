@@ -1,0 +1,181 @@
+# ============================================================================
+# One config, any transport model — dispersion stage default template.
+# ============================================================================
+#   enforceflux dispersion --config configs/dispersion/main.yaml
+#   enforceflux dispersion --config configs/dispersion/main.yaml --model flexpart
+#   enforceflux dispersion --config configs/dispersion/main.yaml --mode operator
+#   enforceflux dispersion --config configs/dispersion/main.yaml --dry-run
+#
+# CLI overrides: --model, --mode. --dry-run writes each model's input files
+# without executing it (the only path when a Fortran binary is not built).
+#
+# ── THE STAGE WRAPPER ───────────────────────────────────────────────────────
+# Every runnable EnforceFlux config carries a stage/run/inputs wrapper so a
+# driver knows (a) which stage this is, (b) which run to group outputs under,
+# and (c) which upstream RunDirs to read from. See src/enforceflux/runs/ for
+# the shared contract.
+#
+# The dispersion stage is a SOURCE STAGE — it consumes no upstream RunDir, so
+# `inputs:` is empty. Its declared output roles:
+#   concentration_field → concentration.nc (canonical, ng m-3)
+#
+# Outputs land at runs/<run.name>/dispersion/ — do NOT set `output:` in the
+# dispersion block below; the driver injects the path.
+#
+# ── THE MODEL CONTRACT ──────────────────────────────────────────────────────
+# Everything above the model blocks is SHARED and authoritative: switching
+# `dispersion.transport.model` runs the identical scenario through a different
+# model. The per-model blocks carry only what has no counterpart elsewhere —
+# a compiled binary, a particle count, an LES box.
+#
+# A model block MAY NOT restate a shared key. The loader raises on any of:
+#   transport, domain, met, sources, receptors, output
+# so sources and meteorology cannot silently diverge between models.
+#
+# ── MET SOURCE ──────────────────────────────────────────────────────────────
+# This template uses INLINE `met.records:` — a small synthetic diurnal cycle
+# so the config runs standalone without any downloaded weather. Every AERMOD
+# and MicroHH config in this directory follows the same convention.
+#
+# For real ERA5 meteorology, replace `records:` with:
+#     era5:
+#       meteo_dir: ../../runs/sacramento_valley_2020/meteo_april_week
+# and download it first with `enforceflux met --config configs/met/main.yaml`.
+#
+# FLEXPART is the exception: its Fortran binary strictly needs GRIB, so
+# configs/dispersion/*_flexpart.yaml use the bundled test met that ships
+# with the FLEXPART submodule instead of inline records.
+#
+# ── GEOMETRY IS A CONTRACT ──────────────────────────────────────────────────
+# domain.origin_lon/origin_lat are the ONLY geographic coordinates in this
+# file. The domain extent, every source and every receptor are Cartesian
+# metres east/north of that origin. Declaring lon/lat anywhere else —
+# including domain bounds, a source, a receptor, or met.era5 — is rejected
+# by the loader. AERMOD and MicroHH are dimensional and consume the metres
+# directly; only the FLEXPART path pays a projection on the way out.
+# Simulation output is always canonical concentration(time, y, x) in ng m-3,
+# whichever model produced it.
+# ============================================================================
+
+stage: dispersion
+
+run:
+  # [required] Groups outputs under runs/<name>/dispersion/.
+  name: main
+  # outputs_root: runs/     # [opt] default: <repo>/runs/
+
+# No upstream stages — dispersion is a source stage.
+inputs: {}
+
+dispersion:
+
+  # ─── transport: which model, and what kind of answer ────────────────────
+  transport:
+    # [required] aermod | flexpart | microhh
+    #   aermod   — steady-state Gaussian plume. Seconds.
+    #   flexpart — Lagrangian particles on ERA5 met. Minutes. Right tool
+    #              from ~1 km out. Needs GRIB — see the note above.
+    #   microhh  — turbulence-resolving LES. Tens of minutes to hours.
+    model: aermod
+
+    # [optional] default: simulation
+    #   simulation — forward run -> canonical concentration field NetCDF.
+    #   operator   — observation x source Jacobian for inversion. REQUIRES
+    #                `receptors:` (the loader raises without them).
+    mode: simulation
+
+    # [optional] both. ISO-8601, assumed UTC if no offset. Bounds the met
+    # window and the run period.
+    start: "2020-03-31T00:00:00"
+    end:   "2020-03-31T06:00:00"
+
+  # ─── met: inline synthetic diurnal cycle (self-contained) ───────────────
+  # wind_direction_deg is METEOROLOGICAL: the direction the wind comes FROM.
+  # Only wind_speed_m_s and wind_direction_deg are [required]; the rest
+  # default. Six records span 5 daytime hours in 1-hour steps.
+  met:
+    records:
+      - {time: "2020-03-31T00:00", wind_speed_m_s: 2.5, wind_direction_deg: 250.0,
+         temperature_k: 285.0, mixing_height_m: 300.0,
+         friction_velocity_m_s: 0.20, sensible_heat_flux_w_m2:  -20.0}
+      - {time: "2020-03-31T02:00", wind_speed_m_s: 3.0, wind_direction_deg: 260.0,
+         temperature_k: 290.0, mixing_height_m: 500.0,
+         friction_velocity_m_s: 0.25, sensible_heat_flux_w_m2:   30.0}
+      - {time: "2020-03-31T04:00", wind_speed_m_s: 3.5, wind_direction_deg: 270.0,
+         temperature_k: 295.0, mixing_height_m: 900.0,
+         friction_velocity_m_s: 0.32, sensible_heat_flux_w_m2:  180.0}
+      - {time: "2020-03-31T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 296.0, mixing_height_m: 1000.0,
+         friction_velocity_m_s: 0.34, sensible_heat_flux_w_m2:  120.0}
+
+  # ─── domain: the one geographic anchor, then Cartesian metres ───────────
+  domain:
+    # [required] THE ONLY lon/lat in this file. Everything below — and every
+    # source and receptor — is metres east/north of this point.
+    origin_lon: -121.75
+    origin_lat: 39.15
+
+    # [required] Extent in metres relative to the origin; max must exceed min.
+    x_min: -4300.0
+    x_max:  4300.0
+    y_min: -4450.0
+    y_max:  4450.0
+
+    # [optional] default 500.0. Canonical output resolution (m).
+    spacing_m: 100.0
+
+    # [optional] default 2.0. Height (m) at which receptor concentrations
+    # are evaluated — sampling height, distinct from each receptor's own alt_m.
+    receptor_height_m: 2.0
+
+    # [optional] default [100.0]. FLEXPART output level tops (m AGL).
+    heights_m: [100.0]
+
+  # ─── sources: emissions (shared by every model) ─────────────────────────
+  sources:
+    - id: leak
+      x_m: 0.0
+      y_m: 0.0
+      alt_m: 5.0
+      emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
+      # Inversion priors — used in `mode: operator` only.
+      prior_mean_kg_s: 1.4e-2
+      prior_std_kg_s: 1.4e-2
+
+  # ─── receptors: measurement locations ───────────────────────────────────
+  # [optional] for mode: simulation; REQUIRED for mode: operator.
+  receptors:
+    - {id: tower_n, x_m:    0.0, y_m:  650.0, alt_m: 3.0}
+    - {id: tower_e, x_m:  600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: tower_s, x_m:    0.0, y_m: -650.0, alt_m: 3.0}
+
+  # ==========================================================================
+  # Model-specific settings. Only the block matching transport.model is read.
+  # ==========================================================================
+
+  aermod:
+    reduce: stack
+    default_stack:
+      height_m: 5.0
+    receptor_path_samples: 1
+
+  flexpart:
+    # NOTE: FLEXPART needs GRIB and cannot consume inline records — running
+    # this config with --model flexpart requires the bundled test met (or a
+    # real ERA5 download at met.era5.meteo_dir). See single_source_flexpart.yaml
+    # for a self-contained FLEXPART setup.
+    executable: ../../flexpart/src/FLEXPART
+    options_dir: ../../flexpart/options
+    n_particles: 100000
+    species_number: 24
+    output_step_seconds: 3600
+    sync_seconds: 900
+
+  microhh:
+    executable: ../../microhh/build/microhh
+    num_workers: 4
+    grid: {itot: 192, jtot: 96, ktot: 64, xsize: 3840.0, ysize: 1920.0, zsize: 2048.0}
+    spinup_seconds: 1800
+    runtime_seconds: 3600
+    sampletime: 60
+    met_reduce: daytime_mean
