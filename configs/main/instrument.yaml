@@ -1,7 +1,7 @@
 # ============================================================================
 # Instrument stage — sample a dispersion concentration field with real sensors.
 # ============================================================================
-#   enforceflux instrument --config configs/instrument/main.yaml
+#   enforceflux instrument --config configs/main/instrument.yaml
 #
 # Applies each deployed sensor's forward operator + heteroscedastic noise
 # model:   y = H(field) + eps
@@ -15,7 +15,7 @@
 #
 # `inputs.dispersion:` must point at a completed dispersion RunDir. Run one
 # first, e.g.:
-#     enforceflux dispersion --config configs/dispersion/single_source_aermod.yaml
+#     enforceflux dispersion --config configs/single_source_aermod/dispersion.yaml
 # then either edit the path below or reuse this pair verbatim.
 # ============================================================================
 

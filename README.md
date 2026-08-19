@@ -94,13 +94,13 @@ The unified `enforceflux` CLI dispatches per-stage subcommands. YAML configs liv
 Downloads ERA5 for a specified date range and geographic bounding box. Outputs FLEXPART-ready GRIB files and an `AVAILABLE` index.
 
 ```bash
-enforceflux met --config configs/met/main.yaml
+enforceflux met --config configs/sacramento_valley_2020/met.yaml
 ```
 
 ### `dispersion` — Any transport model, one config
 
 ```bash
-enforceflux dispersion --config configs/dispersion/main.yaml --model aermod
+enforceflux dispersion --config configs/main/dispersion.yaml --model aermod
 ```
 
 Runs AERMOD, FLEXPART, or MicroHH from the shared schema described in
@@ -111,21 +111,21 @@ Runs AERMOD, FLEXPART, or MicroHH from the shared schema described in
 Runs the full inversion pipeline: loads a pre-computed G matrix + prior emissions → Bayesian posterior → flux estimates with uncertainty. Outputs posterior flux maps and uncertainty reduction statistics.
 
 ```bash
-enforceflux flux --config configs/flux/main.yaml
+enforceflux flux --config configs/main/flux.yaml
 ```
 
 ### `analysis` — Information content analysis
 Takes an existing transport Jacobian G and sensor configuration and computes DFS, averaging kernel, posterior covariance, and sensor ablation rankings.
 
 ```bash
-enforceflux analysis --config configs/analysis/main.yaml
+enforceflux analysis --config configs/main/analysis.yaml
 ```
 
 ### `instrument` — Instrument OSSE
 Single-source instrument sensitivity experiment. Builds an analytical Gaussian-plume G for a configurable sensor network, runs the full information content analysis, and generates diagnostic figures (footprints, DFS spatial map, posterior uncertainty, sensor ablation).
 
 ```bash
-enforceflux instrument --config configs/instrument/main.yaml
+enforceflux instrument --config configs/main/instrument.yaml
 ```
 
 ### `obs` — Real-observation ingress *(planned)*
@@ -142,7 +142,7 @@ enforceflux osse --config examples/quickstart_config.json
 
 Standalone demo scripts live in `examples/`:
 
-Examples/ holds Python demos for the three canonical scenarios (single point source, rice paddy, optical scintillation). Runnable configs for each live in `configs/dispersion/<scenario>_{aermod,flexpart,microhh}.yaml`.
+Examples/ holds Python demos for the three canonical scenarios (single point source, rice paddy, optical scintillation). Runnable configs for each live in `configs/<scenario>_{aermod,flexpart,microhh}/dispersion.yaml`.
 
 | Script | Description |
 |---|---|
@@ -290,9 +290,9 @@ A fourth request downloads time-invariant fields (land-sea mask, orography) on t
 Every transport model runs from one YAML, and the model is a single line in it:
 
 ```bash
-enforceflux dispersion --config configs/dispersion/main.yaml
-enforceflux dispersion --config configs/dispersion/main.yaml --model flexpart
-enforceflux dispersion --config configs/dispersion/main.yaml --mode operator
+enforceflux dispersion --config configs/main/dispersion.yaml
+enforceflux dispersion --config configs/main/dispersion.yaml --model flexpart
+enforceflux dispersion --config configs/main/dispersion.yaml --mode operator
 ```
 
 Everything above the model blocks is **shared and authoritative** — meteorology,
@@ -381,7 +381,7 @@ ERA5 GRIB ──► MetSeries ──┬──► AERMOD    SurfaceMet         (p
 from enforceflux.meteo import met_series_from_era5, to_aermod, to_microhh_forcing, to_flexpart
 
 series = met_series_from_era5(
-    "runs/sacramento_valley_2020/meteo_april_week", -121.75, 39.15,
+    "runs/sacramento_valley_2020_april_week/met", -121.75, 39.15,
     start="2020-03-31", end="2020-04-01", surface_roughness_m=0.15,
 )
 print(series.summary())          # hourly U, direction, T, zi, u*, H, L
@@ -404,7 +404,7 @@ The AERMOD plugin can read ERA5 directly, in place of an inline `met` block:
     "plugin": "enforceflux.transport_operator.aermod",
     "config": {
         "era5": {
-            "meteo_dir": "runs/sacramento_valley_2020/meteo_april_week",
+            "meteo_dir": "runs/sacramento_valley_2020_april_week/met",
             "longitude": -121.75, "latitude": 39.15,
             "start": "2020-03-31T00:00", "end": "2020-04-01T00:00",
             "surface_roughness_m": 0.15
@@ -502,13 +502,13 @@ Two source types are supported:
 ```python
 from enforceflux.flexpart import FlexpartSimulation
 
-sim = FlexpartSimulation.from_yaml("configs/dispersion/simulation_config.yaml")
+sim = FlexpartSimulation.from_yaml("configs/main/dispersion.yaml")
 output_nc = sim.run()   # returns path to output NetCDF
 ```
 
 ### YAML config reference
 
-A fully-annotated example lives at [`configs/dispersion/simulation_config.yaml`](configs/dispersion/simulation_config.yaml).
+A fully-annotated example lives at [`configs/main/dispersion.yaml`](configs/main/dispersion.yaml).
 
 #### `flexpart` — binary and directories
 

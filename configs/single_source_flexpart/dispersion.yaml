@@ -8,7 +8,7 @@
 # its own GRIBs via flexpart.meteo_dir / flexpart.available_file.
 #
 # For a real ERA5 run, download with `enforceflux met --config
-# configs/met/main.yaml` and point flexpart.meteo_dir at that directory.
+# configs/sacramento_valley_2020/met.yaml` and point flexpart.meteo_dir at that directory.
 
 stage: dispersion
 run:
@@ -59,7 +59,10 @@ dispersion:
   flexpart:
     executable: ../../flexpart/src/FLEXPART
     options_dir: ../../flexpart/options
-    # Bundled test met (2009-01-01) plus our fixture AVAILABLE.
+    # Bundled test met (2009-01-01) plus our fixture AVAILABLE — self-contained,
+    # runs offline. For a real ERA5 run, swap these two lines for a met RunDir:
+    #     meteo_dir:      ../../runs/sacramento_valley_2020/met
+    #     available_file: ../../runs/sacramento_valley_2020/met/AVAILABLE
     meteo_dir: ../../flexpart/tests/testdata
     available_file: ../../tests/fixtures/flexpart_meteo/AVAILABLE
     n_particles: 100000

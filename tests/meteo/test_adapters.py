@@ -25,7 +25,7 @@ requires_era5 = pytest.mark.skipif(
     not ERA5_DIR.is_dir() or importlib.util.find_spec("eccodes") is None,
     reason=(
         f"real ERA5 GRIBs not at {ERA5_DIR} or eccodes not installed — "
-        "download with: enforceflux met --config configs/met/main.yaml"
+        "download with: enforceflux met --config configs/sacramento_valley_2020/met.yaml"
     ),
 )
 

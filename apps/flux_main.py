@@ -15,7 +15,7 @@ Roles:
        flux.posterior → posterior.csv     — one row per (source, flux_window)
 
 Usage:
-    enforceflux flux --config configs/flux/main.yaml
+    enforceflux flux --config configs/main/flux.yaml
 """
 import argparse
 import json

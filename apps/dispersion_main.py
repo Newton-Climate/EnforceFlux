@@ -12,10 +12,10 @@ Its declared output roles are:
 * ``concentration_field`` — the canonical NetCDF (``concentration.nc``).
 
 Usage:
-    enforceflux dispersion --config configs/dispersion/single_source_aermod.yaml
-    enforceflux dispersion --config configs/dispersion/main.yaml --model flexpart
-    enforceflux dispersion --config configs/dispersion/main.yaml --mode operator
-    enforceflux dispersion --config configs/dispersion/main.yaml --dry-run
+    enforceflux dispersion --config configs/single_source_aermod/dispersion.yaml
+    enforceflux dispersion --config configs/main/dispersion.yaml --model flexpart
+    enforceflux dispersion --config configs/main/dispersion.yaml --mode operator
+    enforceflux dispersion --config configs/main/dispersion.yaml --dry-run
 """
 import argparse
 import sys

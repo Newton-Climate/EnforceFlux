@@ -13,7 +13,7 @@ Roles:
        analysis.plots   → plots/*.png    (when visualization.enabled)
 
 Usage:
-    enforceflux analysis --config configs/analysis/main.yaml
+    enforceflux analysis --config configs/main/analysis.yaml
 """
 import argparse
 import json
