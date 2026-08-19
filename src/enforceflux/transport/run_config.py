@@ -353,11 +353,23 @@ class TransportRunConfig:
         else:
             output = RunOutput.from_dict(blob["output"], base_dir)
 
+        domain = RunDomain.from_dict(blob["domain"])
+
+        # --- source-heterogeneity OSSE (M2) ---
+        sources_blob = blob["sources"]
+        if isinstance(sources_blob, dict) and "generator" in sources_blob:
+            sources = tuple(
+                _expand_source_generator(sources_blob, domain)
+            )
+        else:
+            sources = tuple(RunSource.from_dict(s) for s in sources_blob)
+        # --- end M2 ---
+
         return cls(
             model=model,  # type: ignore[arg-type]
             mode=mode,  # type: ignore[arg-type]
-            domain=RunDomain.from_dict(blob["domain"]),
-            sources=tuple(RunSource.from_dict(s) for s in blob["sources"]),
+            domain=domain,
+            sources=sources,
             receptors=tuple(RunReceptor.from_dict(r) for r in (blob.get("receptors") or [])),
             met=dict(blob.get("met") or {}),
             output=output,
@@ -376,6 +388,32 @@ class TransportRunConfig:
         if not isinstance(blob, dict):
             raise ValueError(f"Transport config at {config_path} must parse to a mapping")
         return cls.from_dict(blob, base_dir=config_path.parent)
+
+
+# --- source-heterogeneity OSSE (M2) ---
+def _expand_source_generator(
+    sources_blob: dict[str, Any], domain: "RunDomain"
+) -> list["RunSource"]:
+    """Dispatch a ``sources.generator:`` block to a source plugin."""
+    from enforceflux.core.base import ISourceModel
+    from enforceflux.utils.plugin_registry import get_plugin
+
+    name = str(sources_blob["generator"]).strip()
+    inner = dict(sources_blob.get("config") or {})
+    try:
+        plugin_cls = get_plugin("enforceflux.source", name, ISourceModel)
+    except (ValueError, RuntimeError):
+        # Fallback for the lognormal_field generator when entry-points have
+        # not been refreshed (editable install without reinstall).
+        if name == "lognormal_field":
+            from enforceflux.plugins.source_lognormal_field import (
+                LognormalFieldSource as plugin_cls,  # type: ignore[no-redef]
+            )
+        else:
+            raise
+    plugin = plugin_cls()
+    return list(plugin.build_sources(inner, domain))
+# --- end M2 ---
 
 
 # Shared keys a model block must never restate — allowing them would let one
