@@ -1,0 +1,48 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E1 (real FLEXPART) — M4/M5 sweep.
+# ============================================================================
+#   enforceflux osse-sweep --config configs/source_heterogeneity_e1_flexpart/sweep.yaml
+#
+# Same grid as `e1_aermod/sweep.yaml` but the base dispersion runs FLEXPART.
+# The M5 H-cache is content-addressed on the transport-relevant subset of the
+# config, so seeds/CV/L_m variations reuse a single H per (met, layout) group.
+#
+# NOTE: activates once M4 + M5 land (Wave 2 — Agent D, Wave 3 — Agent F).
+# ============================================================================
+
+stage: osse_sweep
+
+run:
+  name: source_heterogeneity_e1_flexpart_sweep
+
+inputs: {}
+
+sweep:
+  base:
+    dispersion: configs/source_heterogeneity_e1_flexpart/dispersion.yaml
+    flux:       configs/source_heterogeneity_e1_flexpart/flux.yaml
+    analysis:   configs/source_heterogeneity_e1_flexpart/analysis.yaml
+
+  grid:
+    dispersion.sources.config.covariance.L_m: [100, 250, 500, 1000, 2000]
+    dispersion.sources.config.cv:             [0.25, 0.5, 1.0, 1.5]
+    dispersion.sources.config.seed:           {range: [0, 40]}
+    instrument.network:                       {kind: nested_space_filling, ns: [2, 4, 8, 16, 32], seeds: [0, 1, 2, 3, 4]}
+    flux.inversion.prior_covariance.L_B_m:    [800.0]
+
+  cache:
+    reuse_H_across:
+      - dispersion.sources.config.seed
+      - dispersion.sources.config.cv
+      - dispersion.sources.config.covariance.L_m
+    # M5 H-cache directory (content-addressed by transport-relevant config
+    # subset); populated by src/enforceflux/osse/h_cache.py.
+    h_cache_dir: runs/.h_cache
+
+  parallel:
+    # FLEXPART on macOS is single-threaded per invocation (user memory:
+    # flexpart-macos-flakiness); process-level parallelism only.
+    workers: 4
+
+  output:
+    parquet: runs/source_heterogeneity_e1_flexpart_sweep/sweep.parquet

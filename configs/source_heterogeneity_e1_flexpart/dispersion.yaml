@@ -1,0 +1,86 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E1 (LPDM ↔ LPDM, real FLEXPART)
+# Dispersion stage — BASE config for the M4/M5 sweep.
+# ============================================================================
+#   enforceflux dispersion --config configs/source_heterogeneity_e1_flexpart/dispersion.yaml
+#
+# Same source-heterogeneity grid as `e1_aermod` but transport is FLEXPART on
+# both sides of the OSSE (nature and inversion). Uses the bundled test met so
+# the config is offline-runnable; swap `meteo_dir`/`available_file` for a
+# real ERA5 met RunDir when running at scale.
+#
+# Per M5 ops guard (user's memory: FLEXPART macOS flakiness), the sweep
+# driver runs FLEXPART single-threaded and validates output time coverage
+# before caching H.
+# ============================================================================
+
+stage: dispersion
+
+run:
+  name: source_heterogeneity_e1_flexpart
+
+inputs: {}
+
+dispersion:
+
+  transport:
+    model: flexpart
+    mode: operator
+    start: "2009-01-01T00:00:00"
+    end:   "2009-01-01T06:00:00"
+
+  # FLEXPART reads its own GRIBs via flexpart.meteo_dir; inline records
+  # satisfy the shared runner contract.
+  met:
+    records:
+      - {time: "2009-01-01T00:00", wind_speed_m_s: 3.0, wind_direction_deg: 270.0,
+         temperature_k: 280.0, mixing_height_m: 400.0,
+         friction_velocity_m_s: 0.25, sensible_heat_flux_w_m2:  20.0}
+      - {time: "2009-01-01T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 282.0, mixing_height_m: 500.0,
+         friction_velocity_m_s: 0.28, sensible_heat_flux_w_m2:  40.0}
+
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -1600.0
+    x_max:  1600.0
+    y_min: -1600.0
+    y_max:  1600.0
+    spacing_m: 50.0
+    receptor_height_m: 2.0
+    heights_m: [100.0]
+
+  # NOTE: `sources.generator:` activates in M2 (Agent E). sweep.yaml overrides
+  # `covariance.L_m`, `cv`, `seed`.
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 2.7778e-2
+      grid: {nx: 64, ny: 64, dx_m: 50.0, origin_x_m: -1600.0, origin_y_m: -1600.0}
+      alt_m: 2.0
+      covariance: {model: exponential, L_m: 500.0}
+      cv: 1.0
+      seed: 0
+      basis: {coarsen: 4}
+      prior: {mean_kg_s_per_cell: 0.0}
+
+  receptors:
+    - {id: r_n,  x_m:    0.0, y_m:  650.0, alt_m: 3.0}
+    - {id: r_e,  x_m:  600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: r_s,  x_m:    0.0, y_m: -650.0, alt_m: 3.0}
+    - {id: r_w,  x_m: -600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: r_ne, x_m:  450.0, y_m:  450.0, alt_m: 3.0}
+    - {id: r_sw, x_m: -450.0, y_m: -450.0, alt_m: 3.0}
+    - {id: r_nw, x_m: -450.0, y_m:  450.0, alt_m: 3.0}
+    - {id: r_se, x_m:  450.0, y_m: -450.0, alt_m: 3.0}
+
+  flexpart:
+    executable: ../../flexpart/src/FLEXPART
+    options_dir: ../../flexpart/options
+    meteo_dir: ../../flexpart/tests/testdata
+    available_file: ../../tests/fixtures/flexpart_meteo/AVAILABLE
+    n_particles: 100000
+    species_number: 24
+    output_step_seconds: 3600
+    sync_seconds: 900

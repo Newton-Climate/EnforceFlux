@@ -1,0 +1,44 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E0 (matched Gaussian ↔ Gaussian)
+# Analysis stage.
+# ============================================================================
+#   enforceflux analysis --config configs/source_heterogeneity_e0/analysis.yaml
+#
+# Consumes the upstream E0 instrument RunDir for full information-content
+# diagnostics. When `basis_mapping.npz` from the dispersion RunDir is present
+# (M2 — Agent E), the driver expands the coarse posterior back to the fine
+# truth grid to evaluate E_Q and records the fine-grid A diagonal.
+# ============================================================================
+
+stage: analysis
+
+run:
+  name: source_heterogeneity_e0
+
+inputs:
+  instrument: ../../runs/source_heterogeneity_e0/instrument
+  # dispersion: ../../runs/source_heterogeneity_e0/dispersion
+
+analysis:
+
+  input:
+    kind: auto
+    simulation_variable_names: [concentration, ch4_mixing_ratio, ch4_concentration]
+
+  analysis:
+    prior_variance: 1.0e-8
+
+  visualization:
+    enabled: true
+    time_index: 0
+    level_index: 0
+    release_index: 0
+    wind_rose:
+      enabled: false
+      u_var: u10
+      v_var: v10
+      n_dir_bins: 16
+      calm_threshold: 0.2
+      title: Wind Rose
+      cmap: viridis
+      output_name: wind_rose.png

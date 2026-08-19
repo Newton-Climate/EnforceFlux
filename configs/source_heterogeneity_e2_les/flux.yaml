@@ -1,0 +1,49 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E2 — Flux stage.
+# ============================================================================
+#   enforceflux flux --config configs/source_heterogeneity_e2_les/flux.yaml
+#
+# E2 mixes transports: pseudo-obs come from the LES nature RunDir; H comes
+# from a FLEXPART operator run (a separate dispersion RunDir built with the
+# same domain/receptors). The M6 observation-units contract
+# (`core/observation_units.py`) fails loudly if the two disagree.
+# ============================================================================
+
+stage: flux
+
+run:
+  name: source_heterogeneity_e2_les
+
+inputs:
+  # The FLEXPART operator RunDir supplies H_fine (transport Jacobian).
+  dispersion: ../../runs/source_heterogeneity_e2_les_flexpart_operator/dispersion
+  # The LES nature RunDir supplies y via the M6 pseudo-obs sampler; the
+  # instrument stage packages it as `obs.obs`.
+  obs:        ../../runs/source_heterogeneity_e2_les/instrument
+
+flux:
+
+  input:
+    mode: instrument_netcdf
+    level_index: 0
+
+  observations:
+    default_sigma: 0.2
+
+  inversion:
+    method: linear
+    prior_flux_kg_s: 0.0
+
+    prior_covariance:
+      model: gaussian_process
+      sigma_kg_s: 1.0e-6
+      L_B_m: 800.0
+
+    prior_variance: 1.0e-12
+    prior_sigma_fraction: 0.5
+
+    n_iter: 20
+    lam0: 1.0e-3
+    lam_factor: 10.0
+    eps: 1.0e-4
+    fd_step: 1.0e-5

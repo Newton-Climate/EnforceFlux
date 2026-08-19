@@ -1,0 +1,48 @@
+# ============================================================================
+# Source-heterogeneity OSSE — Experiment E1 (AERMOD proxy) — M4 sweep.
+# ============================================================================
+#   enforceflux osse-sweep --config configs/source_heterogeneity_e1_aermod/sweep.yaml
+#
+# The sweep driver (M4 — Agent D) loads the three sibling base YAMLs, expands
+# the outer product in `grid:`, groups runs so H is computed once per
+# `reuse_H_across` bucket, and writes one parquet row per realization.
+#
+# NOTE: The sweep driver activates once M4 lands (Wave 2 — Agent D). This
+# skeleton is stable, matches the plan's YAML example, and parses today.
+# ============================================================================
+
+stage: osse_sweep
+
+run:
+  name: source_heterogeneity_e1_aermod_sweep
+
+inputs: {}
+
+sweep:
+  base:
+    dispersion: configs/source_heterogeneity_e1_aermod/dispersion.yaml
+    flux:       configs/source_heterogeneity_e1_aermod/flux.yaml
+    analysis:   configs/source_heterogeneity_e1_aermod/analysis.yaml
+
+  # Grid keys are dotted paths into the base configs; scalars become
+  # single-element lists; `{range: [a, b]}` expands to range(a, b).
+  grid:
+    dispersion.sources.config.covariance.L_m: [100, 250, 500, 1000, 2000]
+    dispersion.sources.config.cv:             [0.25, 0.5, 1.0, 1.5]
+    dispersion.sources.config.seed:           {range: [0, 40]}
+    instrument.network:                       {kind: nested_space_filling, ns: [2, 4, 8, 16, 32], seeds: [0, 1, 2, 3, 4]}
+    flux.inversion.prior_covariance.L_B_m:    [800.0]
+
+  cache:
+    # H is (met, layout, transport)-only; sweeping source-field params reuses
+    # a cached H across all rows in the bucket.
+    reuse_H_across:
+      - dispersion.sources.config.seed
+      - dispersion.sources.config.cv
+      - dispersion.sources.config.covariance.L_m
+
+  parallel:
+    workers: 8
+
+  output:
+    parquet: runs/source_heterogeneity_e1_aermod_sweep/sweep.parquet
