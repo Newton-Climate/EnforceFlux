@@ -2,6 +2,12 @@
 # Source-heterogeneity OSSE — Experiment E1 (AERMOD proxy) — Analysis stage.
 # ============================================================================
 #   enforceflux analysis --config configs/source_heterogeneity_e1_aermod/analysis.yaml
+#
+# --- source-heterogeneity OSSE (M4) ---
+# Points at the dispersion + flux RunDirs (not instrument) so the analysis
+# driver takes the source-heterogeneity-only branch and emits E_Q from the
+# coarse posterior back to the fine truth grid. Mirrors Agent E's E0 anchor.
+# --- end M4 ---
 # ============================================================================
 
 stage: analysis
@@ -10,28 +16,17 @@ run:
   name: source_heterogeneity_e1_aermod
 
 inputs:
-  instrument: ../../runs/source_heterogeneity_e1_aermod/instrument
+  dispersion: ../../runs/source_heterogeneity_e1_aermod/dispersion
+  flux:       ../../runs/source_heterogeneity_e1_aermod/flux
 
 analysis:
 
   input:
-    kind: auto
+    kind: simulation
     simulation_variable_names: [concentration, ch4_mixing_ratio, ch4_concentration]
 
   analysis:
     prior_variance: 1.0e-8
 
   visualization:
-    enabled: true
-    time_index: 0
-    level_index: 0
-    release_index: 0
-    wind_rose:
-      enabled: false
-      u_var: u10
-      v_var: v10
-      n_dir_bins: 16
-      calm_threshold: 0.2
-      title: Wind Rose
-      cmap: viridis
-      output_name: wind_rose.png
+    enabled: false
