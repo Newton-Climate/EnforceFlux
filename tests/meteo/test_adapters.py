@@ -23,7 +23,10 @@ SACRAMENTO = (-121.75, 39.15)
 
 requires_era5 = pytest.mark.skipif(
     not ERA5_DIR.is_dir() or importlib.util.find_spec("eccodes") is None,
-    reason="ERA5 GRIB test data not present or eccodes not installed",
+    reason=(
+        f"real ERA5 GRIBs not at {ERA5_DIR} or eccodes not installed — "
+        "download with: enforceflux met --config configs/met/main.yaml"
+    ),
 )
 
 

@@ -1,49 +1,68 @@
-# Forward FLEXPART concentration run — Sacramento 100 kg/hr point source,
-# 31 March 2020, on a ~500 m output grid. Sampled at the same three sensor
-# locations as the MicroHH demo for a like-for-like concentration comparison.
+# Single 100 kg/hr point leak — FLEXPART Lagrangian particles.
 #
-# Note: ERA5 met is ~0.25-0.3 deg (~28 km), so near-field spread comes from
-# FLEXPART's parameterized boundary-layer turbulence, NOT resolved eddies.
+# Uses the bundled FLEXPART test met (2009-01-01 00Z, 06Z) that ships with
+# the flexpart submodule after `make install-flexpart`, so this config runs
+# offline without downloading ERA5. The shared MetSeries adapter cannot read
+# this reduced GRIB set (missing surface fields like BLH), so the shared
+# `met:` block is inline records; FLEXPART bypasses the adapter and reads
+# its own GRIBs via flexpart.meteo_dir / flexpart.available_file.
+#
+# For a real ERA5 run, download with `enforceflux met --config
+# configs/met/main.yaml` and point flexpart.meteo_dir at that directory.
 
-flexpart:
-  executable:    ../flexpart/src/FLEXPART
-  options_dir:   ../flexpart/tests/default_options
-  available_file: ../runs/sacramento_valley_2020/meteo_april_week/AVAILABLE
-  meteo_dir:     ../runs/sacramento_valley_2020/meteo_april_week/
-  run_dir:       ../runs/flexpart_forward_sacramento_march31/flexpart_run/
+stage: dispersion
+run:
+  name: single_source_flexpart
+inputs: {}
 
-simulation:
-  start: "2020-03-31T00:00:00"
-  end:   "2020-03-31T06:00:00"     # 6 h — enough for a quasi-steady near field
-  output_step_seconds: 3600
-  sync_seconds: 900
-  nxshift: 0
+dispersion:
+  transport:
+    model: flexpart
+    mode: simulation
+    start: "2009-01-01T00:00:00"
+    end:   "2009-01-01T06:00:00"
 
-domain:
-  lon_min: -121.95
-  lat_min:  38.95
-  lon_max: -121.55
-  lat_max:  39.35
-  dx: 0.005
-  dy: 0.005
-  heights_m: [20.0, 100.0, 500.0, 1000.0]
+  # The shared met block is required by the runner even though FLEXPART reads
+  # its own GRIBs; inline records satisfy the runner.
+  met:
+    records:
+      - {time: "2009-01-01T00:00", wind_speed_m_s: 3.0, wind_direction_deg: 270.0,
+         temperature_k: 280.0, mixing_height_m: 400.0,
+         friction_velocity_m_s: 0.25, sensible_heat_flux_w_m2:  20.0}
+      - {time: "2009-01-01T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 282.0, mixing_height_m: 500.0,
+         friction_velocity_m_s: 0.28, sensible_heat_flux_w_m2:  40.0}
 
-species:
-  name: CH4
-  number: 24
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -4300.0
+    x_max:  4300.0
+    y_min: -4450.0
+    y_max:  4450.0
+    spacing_m: 100.0
+    receptor_height_m: 2.0
+    heights_m: [100.0]
 
-sources:
-  - type: point
-    id: sacramento_point_100kghr
-    lon: -121.75
-    lat:  39.15
-    alt_m: 20.0
-    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
-    n_particles: 1000000
-    start: "2020-03-31T00:00:00"
-    end:   "2020-03-31T06:00:00"
+  sources:
+    - id: leak
+      x_m: 0.0
+      y_m: 0.0
+      alt_m: 5.0
+      emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
 
-output:
-  path: ../runs/flexpart_forward_sacramento_march31/flexpart_forward.nc
-  compress: true
-  per_source: false
+  receptors:
+    - {id: tower_n, x_m:    0.0, y_m:  650.0, alt_m: 3.0}
+    - {id: tower_e, x_m:  600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: tower_s, x_m:    0.0, y_m: -650.0, alt_m: 3.0}
+
+  flexpart:
+    executable: ../../flexpart/src/FLEXPART
+    options_dir: ../../flexpart/options
+    # Bundled test met (2009-01-01) plus our fixture AVAILABLE.
+    meteo_dir: ../../flexpart/tests/testdata
+    available_file: ../../tests/fixtures/flexpart_meteo/AVAILABLE
+    n_particles: 100000
+    species_number: 24
+    output_step_seconds: 3600
+    sync_seconds: 900

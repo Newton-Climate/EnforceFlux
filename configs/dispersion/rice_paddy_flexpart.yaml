@@ -1,53 +1,98 @@
-# Sacramento Valley — July 2020
-# Diffuse CH₄ source: rice paddies + wetlands (peak growing season, high flux)
-# Meteorology: ERA5 downloaded to runs/sacramento_valley_2020/meteo_july/
+# Rice paddy scenario driven through FLEXPART.
+# Sources match rice_paddy_microhh.yaml (36-tile 6x6 grid, sum 1.8e-5 kg/s)
+# so the two configs are directly comparable at the canonical grid.
 #
-# Run from repo root:
-#   python examples/sacramento_valley_2020.py
+# Uses the bundled FLEXPART test met (2009-01-01) — see the header of
+# single_source_flexpart.yaml for why the FLEXPART configs live on that date
+# rather than the March-2020 Sacramento window the other configs use.
 
-flexpart:
-  executable:    ../flexpart/src/FLEXPART
-  options_dir:   ../flexpart/tests/default_options
-  available_file: ../runs/sacramento_valley_2020/meteo_july/AVAILABLE
-  meteo_dir:     ../runs/sacramento_valley_2020/meteo_july
-  run_dir:       ../runs/sacramento_valley_2020/flexpart_july
+stage: dispersion
+run:
+  name: rice_paddy_flexpart
+inputs: {}
 
-simulation:
-  start: "2020-07-01T00:00:00"
-  end:   "2020-07-31T00:00:00"
-  output_step_seconds: 10800   # 3-hourly output
-  sync_seconds: 900
-  nxshift: 0                   # 0 = regional grid (negative longitudes); -9999 is for global
+dispersion:
+  transport:
+    model: flexpart
+    mode: simulation
+    start: "2009-01-01T00:00:00"
+    end:   "2009-01-01T06:00:00"
 
-domain:
-  lon_min: -123.5
-  lat_min:  37.5
-  lon_max: -119.0
-  lat_max:  41.5
-  dx: 0.001
-  dy: 0.1
-  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+  # Shared met required by the runner; FLEXPART bypasses it.
+  met:
+    records:
+      - {time: "2009-01-01T00:00", wind_speed_m_s: 3.0, wind_direction_deg: 270.0,
+         temperature_k: 280.0, mixing_height_m: 400.0,
+         friction_velocity_m_s: 0.25, sensible_heat_flux_w_m2:  20.0}
+      - {time: "2009-01-01T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 282.0, mixing_height_m: 500.0,
+         friction_velocity_m_s: 0.28, sensible_heat_flux_w_m2:  40.0}
 
-species:
-  name: CH4
-  number: 24
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -4300.0
+    x_max:  4300.0
+    y_min: -4450.0
+    y_max:  4450.0
+    spacing_m: 100.0
+    receptor_height_m: 2.0
+    heights_m: [100.0]
 
-sources:
-  # Sacramento Valley rice paddies + wetlands — peak July flux
-  # Flux: ~5.4 mg CH₄ m⁻² hr⁻¹  (active growing season, flooded paddies)
-  # Covers Colusa, Glenn, Tehama, Sacramento, Sutter, Yolo counties
-  - type: diffuse
-    id: sacval_rice_july
-    lon_min: -122.5
-    lon_max: -120.5
-    lat_min:  38.5
-    lat_max:  40.5
-    alt_m: 2.0
-    emission_flux_kg_m2_s: 1.5e-9    # ~5.4 mg m⁻² hr⁻¹  (peak paddy season)
-    cell_size_deg: 0.1
-    n_particles_per_cell: 200
+  sources:
+    - {id: paddy_00, x_m: -125.0, y_m: -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_10, x_m:  -75.0, y_m: -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_20, x_m:  -25.0, y_m: -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_30, x_m:   25.0, y_m: -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_40, x_m:   75.0, y_m: -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_50, x_m:  125.0, y_m: -125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_01, x_m: -125.0, y_m:  -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_11, x_m:  -75.0, y_m:  -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_21, x_m:  -25.0, y_m:  -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_31, x_m:   25.0, y_m:  -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_41, x_m:   75.0, y_m:  -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_51, x_m:  125.0, y_m:  -75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_02, x_m: -125.0, y_m:  -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_12, x_m:  -75.0, y_m:  -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_22, x_m:  -25.0, y_m:  -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_32, x_m:   25.0, y_m:  -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_42, x_m:   75.0, y_m:  -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_52, x_m:  125.0, y_m:  -25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_03, x_m: -125.0, y_m:   25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_13, x_m:  -75.0, y_m:   25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_23, x_m:  -25.0, y_m:   25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_33, x_m:   25.0, y_m:   25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_43, x_m:   75.0, y_m:   25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_53, x_m:  125.0, y_m:   25.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_04, x_m: -125.0, y_m:   75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_14, x_m:  -75.0, y_m:   75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_24, x_m:  -25.0, y_m:   75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_34, x_m:   25.0, y_m:   75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_44, x_m:   75.0, y_m:   75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_54, x_m:  125.0, y_m:   75.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_05, x_m: -125.0, y_m:  125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_15, x_m:  -75.0, y_m:  125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_25, x_m:  -25.0, y_m:  125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_35, x_m:   25.0, y_m:  125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_45, x_m:   75.0, y_m:  125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
+    - {id: paddy_55, x_m:  125.0, y_m:  125.0, alt_m: 2.0, emission_rate_kg_s: 5.0e-07}
 
-output:
-  path: ../outputs/sacval_july_2020.nc
-  compress: true
-  per_source: false
+  receptors:
+    - {id: ec_center,  x_m: 0.0, y_m:    0.0, alt_m: 3.0}
+    - {id: edge_n,     x_m: 0.0, y_m:  150.0, alt_m: 3.0}
+    - {id: fetch_250,  x_m: 0.0, y_m:  250.0, alt_m: 3.0}
+    - {id: fetch_500,  x_m: 0.0, y_m:  500.0, alt_m: 3.0}
+    - {id: fetch_1000, x_m: 0.0, y_m: 1000.0, alt_m: 3.0}
+    - {id: upwind_s,   x_m: 0.0, y_m: -300.0, alt_m: 3.0}
+
+  flexpart:
+    executable: ../../flexpart/src/FLEXPART
+    options_dir: ../../flexpart/options
+    meteo_dir: ../../flexpart/tests/testdata
+    available_file: ../../tests/fixtures/flexpart_meteo/AVAILABLE
+    # Distributed across 36 sources; keep per-source count modest so total
+    # particle count (~1.8 M) is comparable to a 100 kg/hr single-source run.
+    n_particles: 50000
+    species_number: 24
+    output_step_seconds: 3600
+    sync_seconds: 900

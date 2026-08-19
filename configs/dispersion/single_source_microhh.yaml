@@ -1,85 +1,61 @@
-# MicroHH plume-scale LES — Sacramento single methane point source.
-#
-# Near-field synthetic truth for the same source as
-# single_source_instrument_backward_500m.yaml: 100 kg/hr at (-121.75, 39.15),
-# sensors ~500 m downwind. MicroHH resolves the turbulent plume the FLEXPART
-# footprint / Gaussian operators only parameterize.
-#
-# The MicroHH binary is not yet vendored. Generate + inspect inputs with:
-#   python examples/microhh_sacramento_demo.py   # dry_run: writes .ini/.prof
-# then clone/build MicroHH (https://github.com/microhh/microhh), set
-# microhh.executable below, and drop dry_run.
+# Single 100 kg/hr point leak at Sacramento — MicroHH turbulence-resolving LES.
+# Runs standalone via inline synthetic met (no ERA5 download required).
+# Reference schema in configs/dispersion/main.yaml.
 
-microhh:
-  executable: ../microhh/build/microhh      # set once MicroHH is built
-  case_dir:   ../runs/microhh_sacramento/
+stage: dispersion
+run:
+  name: single_source_microhh
+inputs: {}
 
-simulation:
-  name: sacramento_ch4
-  start: "2020-03-31T00:00:00"
-  spinup_seconds: 7200        # 2 h turbulence spin-up (discarded)
-  runtime_seconds: 21600      # 6 h release + sampling
-  dt_max: 0.5
-  sampletime: 10              # column/stats output cadence (s)
+dispersion:
+  transport:
+    model: microhh
+    mode: simulation
+    start: "2020-03-31T00:00:00"
+    end:   "2020-03-31T06:00:00"
 
-# Box: 3.072 x 1.536 x 2.048 km at 4 m horizontal / 8 m vertical.
-# ~75M cells — a real but tractable single-GPU / CPU-MPI run.
-grid:
-  itot: 768
-  jtot: 384
-  ktot: 256
-  xsize: 3072.0
-  ysize: 1536.0
-  zsize: 2048.0
+  met:
+    records:
+      - {time: "2020-03-31T00:00", wind_speed_m_s: 2.5, wind_direction_deg: 250.0,
+         temperature_k: 285.0, mixing_height_m: 300.0,
+         friction_velocity_m_s: 0.20, sensible_heat_flux_w_m2:  -20.0}
+      - {time: "2020-03-31T02:00", wind_speed_m_s: 3.0, wind_direction_deg: 260.0,
+         temperature_k: 290.0, mixing_height_m: 500.0,
+         friction_velocity_m_s: 0.25, sensible_heat_flux_w_m2:   30.0}
+      - {time: "2020-03-31T04:00", wind_speed_m_s: 3.5, wind_direction_deg: 270.0,
+         temperature_k: 295.0, mixing_height_m: 900.0,
+         friction_velocity_m_s: 0.32, sensible_heat_flux_w_m2:  180.0}
+      - {time: "2020-03-31T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 296.0, mixing_height_m: 1000.0,
+         friction_velocity_m_s: 0.34, sensible_heat_flux_w_m2:  120.0}
 
-# Wind-aligned frame: box +x points downwind (ENE, bearing 68°) so the plume
-# develops along x. Source pinned near the upwind edge, centred cross-stream.
-domain:
-  origin_lon: -121.75
-  origin_lat: 39.15
-  x_bearing_deg: 68.0
-  source_x0: 460.0            # ~0.15 * xsize
-  source_y0: 768.0            # 0.5 * ysize
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -4300.0
+    x_max:  4300.0
+    y_min: -4450.0
+    y_max:  4450.0
+    spacing_m: 100.0
+    receptor_height_m: 2.0
 
-# Idealised dry ABL. Swap for ERA5-nudged profiles (forcing.py) to match the
-# real 31 March 2020 case once that path is wired in.
-forcing:
-  u_geo: 3.0
-  v_geo: 0.0
-  z0m: 0.1
-  z0h: 0.01
-  thl_surface_K: 290.0
-  thl_lapse_K_per_m: 0.003
-  boundary_layer_height_m: 1000.0
+  sources:
+    - id: leak
+      x_m: 0.0
+      y_m: 0.0
+      alt_m: 5.0
+      emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
 
-species:
-  name: ch4
-  emission_scale: 1.0         # 1.0 = physically calibrated run (strength = kg/s)
+  receptors:
+    - {id: tower_n, x_m:    0.0, y_m:  650.0, alt_m: 3.0}
+    - {id: tower_e, x_m:  600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: tower_s, x_m:    0.0, y_m: -650.0, alt_m: 3.0}
 
-sources:
-  - id: sacramento_point_100kghr
-    lon: -121.75
-    lat: 39.15
-    alt_m: 5.0
-    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr (physical; for scaling)
-    sigma_x_m: 15.0
-    sigma_y_m: 15.0
-    sigma_z_m: 5.0
-
-# Receptors = the 500 m sensors (become [column] sample points).
-instruments:
-  - id: sensor_ENE_axis
-    lon: -121.7446
-    lat:  39.1517
-    alt_m: 10.0
-  - id: sensor_NE
-    lon: -121.7460
-    lat:  39.1533
-    alt_m: 10.0
-  - id: sensor_E
-    lon: -121.7442
-    lat:  39.1498
-    alt_m: 10.0
-
-output:
-  path: ../runs/microhh_sacramento/sacramento_ch4.column.nc
+  microhh:
+    executable: ../../microhh/build/microhh
+    num_workers: 4
+    grid: {itot: 192, jtot: 96, ktot: 64, xsize: 3840.0, ysize: 1920.0, zsize: 2048.0}
+    spinup_seconds: 1800
+    runtime_seconds: 3600
+    sampletime: 60
+    met_reduce: daytime_mean

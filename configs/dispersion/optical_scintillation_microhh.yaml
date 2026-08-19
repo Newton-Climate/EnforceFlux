@@ -1,101 +1,96 @@
 # ============================================================================
-# Fine-grid MicroHH case for OPTICAL C_n^2 / scintillation over an open path.
+# Fine-grid MicroHH LES for OPTICAL C_n^2 / scintillation over an open path.
 # ============================================================================
+#   enforceflux dispersion --config configs/dispersion/optical_scintillation_microhh.yaml
+#
 # Purpose: resolve the surface-layer temperature turbulence that sets the
 # refractive-index structure parameter C_n^2 along a 300 m open beam at ~20 m,
 # then feed examples/optical_scintillation_psd.py.
 #
-# Why these numbers (see the earlier resolution analysis):
-#   * Optical C_n^2 is driven by the TEMPERATURE structure parameter C_T^2. To
-#     resolve the flux-carrying eddies at beam height z ~ 20 m you need
-#     dx <~ z/5 ~ 4 m. The 20 m demo grid (dx ~ z) filters them out and gives
-#     only a lower bound on C_n^2.
+# Why these numbers:
+#   * Optical C_n^2 is driven by the TEMPERATURE structure parameter C_T^2.
+#     To resolve the flux-carrying eddies at beam height z ~ 20 m you need
+#     dx <= z/5 ~ 4 m. The 100 m demo grid (dx ~ 5z) filters them out and
+#     gives only a lower bound on C_n^2.
 #   * Vertical grid is STRETCHED (dz ~ 2 m at the surface) so the near-surface
 #     temperature gradient — which dominates C_T^2 — is actually resolved.
 #   * The scintillation TEMPORAL spectrum (knee ~100 Hz) is optics, not LES:
-#     0.5 s output only fixes C_n^2 and its slow (< ~0.4 Hz) envelope. That is
-#     all the LES needs to provide; the fast PSD is analytic (Rytov).
-#
-# This case is meant to be driven by examples/optical_cn2_fine_run.py, which
-# runs it in two phases (spin-up -> save restart -> 0.5 s sampling window) and
-# injects temperature (`th`) cross-sections that the base writer does not emit.
-# Running it directly with the plain runner still works but samples only the
-# scalar and at a single cadence.
+#     0.5 s output only fixes C_n^2 and its slow (< ~0.4 Hz) envelope. That
+#     is all the LES needs to provide; the fast PSD is analytic (Rytov).
 #
 # Cost: ~480x240x128 ~ 14.7M cells, dx=4 m. Per simulated second this is
-# ~O(60x) the 20 m demo; a 30 s window with dt clamped to 0.5 s is an
-# overnight serial job — run spin-up once, save a restart, and pay the fine
-# cadence only on the short window. Scale with MPI (num_workers) to bring it
-# down to ~10-20 min.
+# ~60x the 100 m single-source run. Drive it with MPI (num_workers >= 4)
+# and a short runtime; the companion examples/optical_cn2_fine_run.py runs it
+# in two phases (spin-up -> restart -> 0.5 s sampling window) and injects the
+# temperature (`th`) cross-sections that the base writer does not emit.
 # ============================================================================
 
-microhh:
-  executable: ../microhh/build/microhh
-  case_dir:   ../runs/microhh_optical_cn2_fine/
-  num_workers: 1              # scale up for the real run: valid splits for this
-                              #   grid include 2/4/8/16/32 (needs MPI build +
-                              #   mpirun; see microhh_reference.yaml).
+stage: dispersion
+run:
+  name: optical_scintillation_microhh
+inputs: {}
 
-simulation:
-  name: optical_cn2_fine
-  start: "2020-03-31T12:00:00"   # local midday: strongest surface heating / C_n^2
-  spinup_seconds: 3600           # grow turbulence; the driver saves a restart here
-  runtime_seconds: 30            # the scintillation sampling window
-  sampletime: 0.5                # 0.5 s output -> Nyquist 1 Hz (C_n^2 envelope)
-  dt_max: 0.5                    # clamp the adaptive step so it lands on 0.5 s marks
+dispersion:
+  transport:
+    model: microhh
+    mode: simulation
+    start: "2020-03-31T12:00:00"    # local midday: strongest surface heating
+    end:   "2020-03-31T13:00:00"    # 1 hour bracket; runtime tunes below
 
-# 1.92 x 0.96 x 1.536 km at 4 m horizontal, stretched vertical (~2 m near surface).
-grid:
-  itot: 480          # dx = 4 m (downwind)
-  jtot: 240          # dy = 4 m (crosswind = beam axis)
-  ktot: 128          # stretched in z
-  xsize: 1920.0
-  ysize: 960.0
-  zsize: 1536.0      # ~1.5 x BL depth; top-25% sponge sits above the plume
-  dz_surface_m: 2.0  # fine near the surface where C_T^2 is largest
-  dz_max_m: 32.0     # coarsen aloft to keep ktot affordable
+  # Inline midday convective met — strong surface heating drives large C_T^2.
+  met:
+    records:
+      - {time: "2020-03-31T12:00", wind_speed_m_s: 3.0, wind_direction_deg: 270.0,
+         temperature_k: 300.0, mixing_height_m: 1200.0,
+         friction_velocity_m_s: 0.35, sensible_heat_flux_w_m2: 300.0,
+         surface_roughness_m: 0.1}
+      - {time: "2020-03-31T13:00", wind_speed_m_s: 3.2, wind_direction_deg: 270.0,
+         temperature_k: 301.0, mixing_height_m: 1300.0,
+         friction_velocity_m_s: 0.36, sensible_heat_flux_w_m2: 320.0,
+         surface_roughness_m: 0.1}
 
-domain:
-  origin_lon: -121.75
-  origin_lat: 39.15
-  x_bearing_deg: 68.0
-  source_x0: 288.0            # 0.15 * xsize
-  source_y0: 480.0            # 0.5 * ysize (beam centred crosswind)
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    # 1.92 x 0.96 km at 4 m spacing => 480 x 240 cells.
+    x_min: -960.0
+    x_max:  960.0
+    y_min: -480.0
+    y_max:  480.0
+    spacing_m: 4.0
+    receptor_height_m: 20.0        # beam height
 
-forcing:
-  u_geo: 3.0                  # m/s transverse-to-beam wind sets the scintillation band
-  v_geo: 0.0
-  z0m: 0.1
-  z0h: 0.01
-  thl_surface_K: 300.0
-  thl_lapse_K_per_m: 0.003
-  boundary_layer_height_m: 1000.0
-  inversion_strength_K: 2.0
-  inversion_depth_m: 100.0
-  surface_heat_flux_K_m_s: 0.1   # vigorous convection -> strong C_T^2
+  sources:
+    - id: point
+      x_m: -672.0                  # 0.15 * xsize upwind of centre
+      y_m: 0.0
+      alt_m: 20.0
+      emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr (scalar is passive)
 
-species:
-  name: ch4
-  emission_scale: 1.0
+  # A column at the beam centre for a point temperature time series.
+  receptors:
+    - {id: beam_midspan, x_m: 0.0, y_m: 0.0, alt_m: 20.0}
 
-# The beam plane. cross.xy_m is the height at which the driver writes the `th`
-# xy cross-section that optical_scintillation_psd.py reads.
-cross:
-  xy_m: 20.0                  # beam height
-  xz_m: 480.0                 # box-y of the beam (source line)
+  microhh:
+    executable: ../../microhh/build/microhh
+    num_workers: 4
+    grid:
+      itot: 480
+      jtot: 240
+      ktot: 128
+      xsize: 1920.0
+      ysize:  960.0
+      zsize: 1536.0
+      dz_surface_m: 2.0       # fine near surface where C_T^2 is largest
+      dz_max_m: 32.0
 
-sources:
-  - id: sacramento_point
-    lon: -121.75
-    lat: 39.15
-    alt_m: 20.0
-    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr (scalar is passive; irrelevant to C_n^2)
-    sigma_x_m: 8.0                      # ~2 dx blob half-widths on the fine grid
-    sigma_y_m: 8.0
-    sigma_z_m: 8.0
+    source_sigma_m: 8.0       # ~2 dx on the fine grid
+    spinup_seconds: 3600      # grow turbulence
+    runtime_seconds: 30       # short scintillation-sampling window
 
-instruments:
-  - id: beam_midspan          # a column at the beam centre for a point T time series
-    lon: -121.75
-    lat: 39.15
-    alt_m: 20.0
+    # Fast column output for the PSD envelope; sparser stats/cross to save disk.
+    sampletime: 30
+    column_sampletime: 0.5     # 0.5 s -> Nyquist 1 Hz (C_n^2 envelope)
+    stats_sampletime: 30
+    cross_sampletime: 5
+    met_reduce: mean

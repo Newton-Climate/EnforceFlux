@@ -1,49 +1,57 @@
-# Sacramento single-source plume demo
-# Uses July 2020 Sacramento Valley meteorology and a 100 kg/hr point source.
-# Run from the repo root:
-#   python examples/gaussian_plume_single_source_demo.py
+# Single 100 kg/hr point leak at Sacramento — AERMOD steady-state Gaussian.
+# Runs standalone via inline synthetic met (no ERA5 download required).
+# Reference schema in configs/dispersion/main.yaml.
 
-flexpart:
-  executable:    ../flexpart/src/FLEXPART
-  options_dir:   ../flexpart/tests/default_options
-  available_file: ../runs/sacramento_valley_2020/meteo_july/AVAILABLE
-  meteo_dir:     ../runs/sacramento_valley_2020/meteo_july/
-  run_dir:       ../runs/gaussian_plume_single_source_sacramento/flexpart_run/
+stage: dispersion
+run:
+  name: single_source_aermod
+inputs: {}
 
-simulation:
-  start: "2020-07-01T00:00:00"
-  end:   "2020-07-02T00:00:00"
-  # Use 3-hour output averaging aligned with ERA5 meteorology resolution.
-  output_step_seconds: 10800
-  sync_seconds: 3600
-  nxshift: 0
+dispersion:
+  transport:
+    model: aermod
+    mode: simulation
+    start: "2020-03-31T00:00:00"
+    end:   "2020-03-31T06:00:00"
 
-domain:
-  # Focus on a Sacramento subdomain with slight edge padding.
-  lon_min: -121.98
-  lat_min:  39.02
-  lon_max: -121.52
-  lat_max:  39.48
-  # Coarser cells improve plume continuity for presentation-style visuals.
-  dx: 0.025
-  dy: 0.025
-  heights_m: [100.0, 500.0, 1000.0, 2000.0, 50000.0]
+  met:
+    records:
+      - {time: "2020-03-31T00:00", wind_speed_m_s: 2.5, wind_direction_deg: 250.0,
+         temperature_k: 285.0, mixing_height_m: 300.0,
+         friction_velocity_m_s: 0.20, sensible_heat_flux_w_m2:  -20.0}
+      - {time: "2020-03-31T02:00", wind_speed_m_s: 3.0, wind_direction_deg: 260.0,
+         temperature_k: 290.0, mixing_height_m: 500.0,
+         friction_velocity_m_s: 0.25, sensible_heat_flux_w_m2:   30.0}
+      - {time: "2020-03-31T04:00", wind_speed_m_s: 3.5, wind_direction_deg: 270.0,
+         temperature_k: 295.0, mixing_height_m: 900.0,
+         friction_velocity_m_s: 0.32, sensible_heat_flux_w_m2:  180.0}
+      - {time: "2020-03-31T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 296.0, mixing_height_m: 1000.0,
+         friction_velocity_m_s: 0.34, sensible_heat_flux_w_m2:  120.0}
 
-species:
-  name: CH4
-  number: 24
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -4300.0
+    x_max:  4300.0
+    y_min: -4450.0
+    y_max:  4450.0
+    spacing_m: 100.0
+    receptor_height_m: 2.0
 
-sources:
-  - type: point
-    id: sacramento_point_100kghr
-    lon: -121.75
-    lat: 39.15
-    alt_m: 5.0
-    emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
-    # Higher particle count further reduces shot-noise in each output bin.
-    n_particles: 5000000
+  sources:
+    - id: leak
+      x_m: 0.0
+      y_m: 0.0
+      alt_m: 5.0
+      emission_rate_kg_s: 2.7777778e-2   # 100 kg/hr
 
-output:
-  path: ../runs/gaussian_plume_single_source_sacramento/flexpart_single_source.nc
-  compress: true
-  per_source: false
+  receptors:
+    - {id: tower_n, x_m:    0.0, y_m:  650.0, alt_m: 3.0}
+    - {id: tower_e, x_m:  600.0, y_m:    0.0, alt_m: 3.0}
+    - {id: tower_s, x_m:    0.0, y_m: -650.0, alt_m: 3.0}
+
+  aermod:
+    reduce: stack
+    default_stack:
+      height_m: 5.0

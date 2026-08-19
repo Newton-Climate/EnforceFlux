@@ -340,11 +340,15 @@ def _json_default(o: Any) -> Any:
     return str(o)
 
 
+from enforceflux.runs.stage_config import StageConfig, load_stage_config
+
 __all__ = [
     "OUTPUT_CONTRACT_VERSION",
     "RunDir",
+    "StageConfig",
     "UpstreamRef",
     "attach_file_logger",
+    "load_stage_config",
     "open_run_dir",
     "read_upstream",
 ]
