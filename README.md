@@ -10,7 +10,7 @@ EnforceFlux is a modular OSSE (Observing System Simulation Experiment) framework
 
 - [Installation](#installation)
 - [Capabilities](#capabilities)
-- [Apps](#apps)
+- [Apps](#apps) — see also the [per-app docs](docs/apps/README.md)
 - [Compiling FLEXPART](#compiling-flexpart)
 - [ERA5 meteorological forcing](#era5-meteorological-forcing)
 - [Running a transport model](#running-a-transport-model)
@@ -88,54 +88,31 @@ sudo apt-get install gfortran libeccodes-dev libnetcdf-dev libnetcdff-dev
 
 ## Apps
 
-The unified `enforceflux` CLI dispatches per-stage subcommands. YAML configs live under `configs/<stage>/`; the underlying drivers live under `apps/<stage>_main.py` and can still be invoked directly if you prefer.
+EnforceFlux is a pipeline of small command-line apps. Each does one job and
+writes its outputs into `runs/<run.name>/<stage>/` for the next app to
+consume. **Each app has its own doc** under
+[`docs/apps/`](docs/apps/README.md) — start there for concepts, config
+walkthroughs, and common gotchas.
 
-### `met` — ERA5 downloader
-Downloads ERA5 for a specified date range and geographic bounding box. Outputs FLEXPART-ready GRIB files and an `AVAILABLE` index.
+| # | App | What it does | Doc |
+|---|-----|--------------|-----|
+| 1 | `met` | Download ERA5 weather over a region and window. | [docs/apps/met.md](docs/apps/met.md) |
+| 2 | `dispersion` | Run AERMOD, FLEXPART, or MicroHH — one config, any backend. | [docs/apps/dispersion.md](docs/apps/dispersion.md) |
+| 3 | `instrument` | Sample the concentration field with virtual sensors + noise. | [docs/apps/instrument.md](docs/apps/instrument.md) |
+| 4 | `flux` | Bayesian OE inversion for source emissions. | [docs/apps/flux.md](docs/apps/flux.md) |
+| 5 | `analysis` | DFS, averaging kernel, sensor ablation, plots. | [docs/apps/analysis.md](docs/apps/analysis.md) |
+|   | `obs` | *(planned)* Ingest real observations. | [docs/apps/obs.md](docs/apps/obs.md) |
+|   | `osse` | Legacy one-shot end-to-end driver. | [docs/apps/osse.md](docs/apps/osse.md) |
+|   | `osse-sweep` | Run many OSSEs across a parameter grid. | [docs/apps/osse-sweep.md](docs/apps/osse-sweep.md) |
 
-```bash
-enforceflux met --config configs/sacramento_valley_2020/met.yaml
-```
-
-### `dispersion` — Any transport model, one config
-
-```bash
-enforceflux dispersion --config configs/main/dispersion.yaml --model aermod
-```
-
-Runs AERMOD, FLEXPART, or MicroHH from the shared schema described in
-[Running a transport model](#running-a-transport-model), writing a canonical
-`concentration(time, y, x)` NetCDF regardless of backend.
-
-### `flux` — Flux inversion
-Runs the full inversion pipeline: loads a pre-computed G matrix + prior emissions → Bayesian posterior → flux estimates with uncertainty. Outputs posterior flux maps and uncertainty reduction statistics.
+**Minimal end-to-end OSSE** — no ERA5 download or FLEXPART build required,
+uses the default JAX AERMOD backend and an inline synthetic diurnal cycle:
 
 ```bash
-enforceflux flux --config configs/main/flux.yaml
-```
-
-### `analysis` — Information content analysis
-Takes an existing transport Jacobian G and sensor configuration and computes DFS, averaging kernel, posterior covariance, and sensor ablation rankings.
-
-```bash
-enforceflux analysis --config configs/main/analysis.yaml
-```
-
-### `instrument` — Instrument OSSE
-Single-source instrument sensitivity experiment. Builds an analytical Gaussian-plume G for a configurable sensor network, runs the full information content analysis, and generates diagnostic figures (footprints, DFS spatial map, posterior uncertainty, sensor ablation).
-
-```bash
+enforceflux dispersion --config configs/main/dispersion.yaml
 enforceflux instrument --config configs/main/instrument.yaml
-```
-
-### `obs` — Real-observation ingress *(planned)*
-Reserved subcommand. Parses a user-supplied observation file into the same `obs.parquet` schema the `instrument` stage produces so `flux` can consume real observations without knowing the difference. Ingress wiring lands with the run-artifact contract (D2b).
-
-### `osse` — Legacy end-to-end OSSE
-Single-JSON-config OSSE covering source → instrument → transport → inversion → metrics. Kept for backward compatibility; new work should compose the per-stage subcommands.
-
-```bash
-enforceflux osse --config examples/quickstart_config.json
+enforceflux flux       --config configs/main/flux.yaml
+enforceflux analysis   --config configs/main/analysis.yaml
 ```
 
 ### Examples
