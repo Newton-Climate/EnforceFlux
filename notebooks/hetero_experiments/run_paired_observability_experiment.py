@@ -87,24 +87,26 @@ def nested_centres(spec: dict, layout_seed: int) -> list[tuple[int, float]]:
 def paired_geometry(
     spec: dict, nature: str, n: int, layout_seed: int, technology: str,
 ) -> tuple[list[dict], list[dict], float, float]:
-    nc = ROOT / "runs" / nature / "dispersion/concentration.nc"
     generated = ROOT / "runs" / nature / (
         "dispersion/concentration_microhh/microhh_generated.yaml"
     )
-    to_lonlat = affine_lonlat(nc)
-    bearing = float(yaml.safe_load(generated.read_text())["domain"]["x_bearing_deg"])
+    generated_cfg = yaml.safe_load(generated.read_text())
+    domain_cfg = generated_cfg["domain"]
+    bearing = float(domain_cfg["x_bearing_deg"])
     beam_bearing = (bearing - 90.0) % 360.0
     x_m = float(spec["network"]["downwind_x_m"])
     length = float(spec["network"]["beam_length_m"])
 
-    from enforceflux.transport.run_config import DomainProjection
-    projection = DomainProjection(-121.75, 39.15)
+    from enforceflux.transport import WindAlignedFrame
+    frame = WindAlignedFrame.from_origin(
+        float(domain_cfg["origin_lon"]), float(domain_cfg["origin_lat"]), bearing,
+    )
     instruments, receptors = [], []
     for candidate, centre_y in nested_centres(spec, layout_seed)[:n]:
         is_op = technology == "op"
         local_y = centre_y - 0.5 * length if is_op else centre_y
-        lon, lat = to_lonlat(x_m, local_y)
-        east, north = projection.to_xy(lon, lat)
+        lon, lat = frame.local_to_lonlat(x_m, local_y)
+        east, north = frame.local_to_xy(x_m, local_y)
         rid = f"layout{layout_seed}_c{candidate:02d}"
         inst = {
             "id": rid, "tech_id": "OP" if is_op else "PS", "mode": "good",
@@ -112,7 +114,7 @@ def paired_geometry(
         }
         receptor = {"id": rid, "x_m": float(east), "y_m": float(north), "alt_m": 3.0}
         if is_op:
-            inst.update(path_length_m=length, path_bearing_deg=0.0)
+            inst.update(path_length_m=length, path_bearing_deg=beam_bearing)
             receptor.update(path_length_m=length, path_bearing_deg=beam_bearing)
         instruments.append(inst)
         receptors.append(receptor)
@@ -141,11 +143,21 @@ def configure_operator_paths(blob: dict, met_dir: Path) -> None:
 
 def run_cell(
     spec: dict, L: int, cv: float, source_seed: int, layout_seed: int,
-    n: int, technology: str, tmp: Path,
+    n: int, technology: str, tmp: Path, operator_model: str,
+    transport_profile: dict[str, float | int] | None = None,
 ) -> None:
     nature = nature_name(spec, L, cv, source_seed)
     beam_length = int(round(float(spec["network"]["beam_length_m"])))
-    tag = f"l{L}_cv{cv_slug(cv)}_s{source_seed}_layout{layout_seed}_n{n}_b{beam_length}_{technology}"
+    tag = (
+        f"l{L}_cv{cv_slug(cv)}_s{source_seed}_layout{layout_seed}_n{n}_"
+        f"b{beam_length}_geo2_{operator_model}_{technology}"
+    )
+    if transport_profile:
+        tag += (
+            f"_p{int(transport_profile['n_particles'])}_"
+            f"z{int(transport_profile['output_height_m'])}_"
+            f"dx{int(transport_profile['spacing_m'])}_t600"
+        )
     base = f"paired_observability_{tag}"
     operator_name = f"{base}_operator"
     instruments, receptors, bearing, beam_bearing = paired_geometry(
@@ -160,9 +172,6 @@ def run_cell(
     inst["instrument"]["instruments"] = instruments
 
     operator = load_yaml("operator.yaml")
-    met_ref = spec["meteorology"]["cases"][0]["directory"]
-    met_dir = (TEMPLATES / met_ref).resolve()
-    configure_operator_paths(operator, met_dir)
     operator["run"]["name"] = operator_name
     source_cfg = operator["dispersion"]["sources"]["config"]
     source_cfg["covariance"]["L_m"] = float(L)
@@ -170,14 +179,46 @@ def run_cell(
     source_cfg["seed"] = int(source_seed)
     source_cfg["basis"]["coarsen"] = int(spec["inversion"]["gp_coarsen"])
     operator["dispersion"]["receptors"] = receptors
-    flex = operator["dispersion"]["flexpart"]
-    flex["source_x_bearing_deg"] = bearing
-    flex["physical_beam_bearing_deg"] = beam_bearing
-    flex["path_samples"] = int(spec["network"]["beam_quadrature_points"])
-    flex["base_run_dir"] = str(
-        ROOT / "runs/paired_observability_flexpart_cache" / technology /
-        f"beam{beam_length}_layout{layout_seed}"
-    )
+    if operator_model == "flexpart":
+        met_ref = spec["meteorology"]["cases"][0]["directory"]
+        configure_operator_paths(operator, (TEMPLATES / met_ref).resolve())
+        flex = operator["dispersion"]["flexpart"]
+        flex["source_x_bearing_deg"] = bearing
+        flex["physical_beam_bearing_deg"] = beam_bearing
+        flex["path_samples"] = int(spec["network"]["beam_quadrature_points"])
+        flex["base_run_dir"] = str(
+            ROOT / "runs/paired_observability_flexpart_cache" / technology /
+            f"beam{beam_length}_geo2_layout{layout_seed}"
+        )
+        if transport_profile:
+            operator["dispersion"]["transport"]["end"] = "2026-07-01T12:10:00"
+            operator["dispersion"]["domain"]["spacing_m"] = float(transport_profile["spacing_m"])
+            operator["dispersion"]["domain"]["heights_m"] = [float(transport_profile["output_height_m"])]
+            flex["n_particles"] = int(transport_profile["n_particles"])
+            # The output grid may be refined independently of the fixed 80 m
+            # source field.  Footprint-to-Jacobian conversion must use source
+            # cell area, not the output-grid area.
+            source_grid = source_cfg["grid"]
+            flex["source_areas_m2"] = float(source_grid["dx_m"]) ** 2
+            flex["mixing_height_m"] = float(transport_profile["output_height_m"])
+            flex["base_run_dir"] = str(
+                ROOT / "runs/paired_observability_flexpart_convergence_cache" / technology /
+                f"p{int(transport_profile['n_particles'])}_z{int(transport_profile['output_height_m'])}_"
+                f"dx{int(transport_profile['spacing_m'])}_t600_layout{layout_seed}"
+            )
+    elif operator_model == "aermod":
+        operator["dispersion"]["transport"]["model"] = "aermod"
+        met_ref = spec["meteorology"]["cases"][0]["directory"]
+        operator["dispersion"]["met"]["era5"]["meteo_dir"] = str(
+            (TEMPLATES / met_ref).resolve()
+        )
+        operator["dispersion"].pop("flexpart", None)
+        operator["dispersion"]["aermod"] = {
+            "reduce": "mean", "default_stack": {"height_m": 2.0},
+            "receptor_path_samples": int(spec["network"]["beam_quadrature_points"]),
+        }
+    else:
+        raise ValueError(f"Unsupported operator model: {operator_model}")
 
     stage("instrument", inst, tmp)
     stage("operator", operator, tmp)
@@ -234,8 +275,9 @@ def validate(spec: dict) -> None:
     print(f"Planned inversions: {2 * n_cells} (total_uniform + spatial_gp)")
 
 
-def summarize(spec: dict) -> None:
-    output = ROOT / "notebooks/hetero_experiments/paired_observability_results.csv"
+def summarize(spec: dict, operator_model: str) -> None:
+    suffix = "" if operator_model == "flexpart" else f"_{operator_model}"
+    output = ROOT / f"notebooks/hetero_experiments/paired_observability_results{suffix}.csv"
     fields = [
         "L_source_m", "cv", "source_seed", "layout_seed", "n_instruments",
         "technology", "mode", "Q_true_kg_s", "Q_hat_kg_s", "E_Q",
@@ -245,7 +287,10 @@ def summarize(spec: dict) -> None:
     rows = []
     for L, cv, source_seed, layout_seed, n, technology in cells(spec):
         beam_length = int(round(float(spec["network"]["beam_length_m"])))
-        tag = f"l{L}_cv{cv_slug(cv)}_s{source_seed}_layout{layout_seed}_n{n}_b{beam_length}_{technology}"
+        tag = (
+            f"l{L}_cv{cv_slug(cv)}_s{source_seed}_layout{layout_seed}_n{n}_"
+            f"b{beam_length}_geo2_{operator_model}_{technology}"
+        )
         for mode in spec["experiment"]["inversion_modes"]:
             run_name = f"paired_observability_{tag}_{mode}"
             flux_path = ROOT / "runs" / run_name / "flux/summary.json"
@@ -329,7 +374,7 @@ def summarize(spec: dict) -> None:
                 and ratio_bounds[0] <= median_ratio <= ratio_bounds[1]
             ),
         })
-    equality_output = ROOT / "notebooks/hetero_experiments/paired_observability_equality.csv"
+    equality_output = ROOT / f"notebooks/hetero_experiments/paired_observability_equality{suffix}.csv"
     if equality_rows:
         with equality_output.open("w", newline="") as stream:
             writer = csv.DictWriter(
@@ -355,7 +400,7 @@ def summarize(spec: dict) -> None:
                         "N_min": min(qualifying) if qualifying else "",
                         "success_probability_target": probability_target,
                     })
-    required_output = ROOT / "notebooks/hetero_experiments/paired_observability_required_network.csv"
+    required_output = ROOT / f"notebooks/hetero_experiments/paired_observability_required_network{suffix}.csv"
     with required_output.open("w", newline="") as stream:
         writer = csv.DictWriter(
             stream, fieldnames=list(required_rows[0]), lineterminator="\n"
@@ -374,15 +419,21 @@ def main() -> None:
                         help="Restrict --full to one source correlation length")
     parser.add_argument("--cv", type=float, choices=(0.5, 1.0, 2.0),
                         help="Restrict --full to one coefficient of variation")
-    parser.add_argument("--n-instruments", type=int, choices=(2, 3, 4, 8, 16),
+    parser.add_argument("--n-instruments", type=int, choices=(1, 2, 4, 8, 16),
                         help="Restrict --full to one network size")
+    parser.add_argument("--operator-model", choices=("flexpart", "aermod"), default="flexpart")
+    parser.add_argument("--layout-seed", type=int, choices=(0, 1, 2, 3, 4),
+                        help="Restrict --full to one network layout")
+    parser.add_argument("--n-particles", type=int, help="FLEXPART convergence override")
+    parser.add_argument("--output-height-m", type=float, help="FLEXPART convergence override")
+    parser.add_argument("--spacing-m", type=float, help="FLEXPART convergence override")
     args = parser.parse_args()
     spec = load_yaml("experiment.yaml")
     validate(spec)
     if not (args.pilot or args.full or args.summarize):
         return
     if args.summarize:
-        summarize(spec); return
+        summarize(spec, args.operator_model); return
     selected = list(cells(spec))
     if args.pilot:
         selected = [cell for cell in selected if cell[:5] == (200, 0.5, 0, 0, 2)]
@@ -393,10 +444,20 @@ def main() -> None:
             selected = [cell for cell in selected if cell[1] == args.cv]
         if args.n_instruments is not None:
             selected = [cell for cell in selected if cell[4] == args.n_instruments]
+        if args.layout_seed is not None:
+            selected = [cell for cell in selected if cell[3] == args.layout_seed]
+    convergence_values = (args.n_particles, args.output_height_m, args.spacing_m)
+    if any(value is not None for value in convergence_values) and not all(value is not None for value in convergence_values):
+        parser.error("--n-particles, --output-height-m, and --spacing-m must be used together")
+    transport_profile = None if args.n_particles is None else {
+        "n_particles": args.n_particles, "output_height_m": args.output_height_m,
+        "spacing_m": args.spacing_m,
+    }
     with tempfile.TemporaryDirectory(prefix="paired_observability_") as tmp_dir:
         for cell in selected:
-            run_cell(spec, *cell, Path(tmp_dir))
-    summarize(spec)
+            run_cell(spec, *cell, Path(tmp_dir), args.operator_model, transport_profile)
+    if transport_profile is None:
+        summarize(spec, args.operator_model)
 
 
 if __name__ == "__main__":

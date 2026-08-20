@@ -1,0 +1,24 @@
+stage: dispersion
+run: {name: paired_gaussian_les_field_comparison}
+inputs: {}
+dispersion:
+  transport: {model: aermod, mode: simulation, start: '2026-07-01T12:00:00', end: '2026-07-01T12:10:00'}
+  met:
+    records:
+      - {time: '2026-07-01T12:00:00', wind_speed_m_s: 0.8825305316, wind_direction_deg: 166.1461171, temperature_k: 291.0395508, monin_obukhov_length_m: 22.7066169, mixing_height_m: 71.2598829, friction_velocity_m_s: 0.0766556280, sensible_heat_flux_w_m2: -1.775, surface_roughness_m: 0.1}
+  domain: {origin_lon: -121.75, origin_lat: 39.15, x_min: -2200.0, x_max: 2200.0, y_min: -2200.0, y_max: 2200.0, spacing_m: 40.0, receptor_height_m: 3.0, heights_m: [3.0]}
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 2.7778e-2
+      grid: {nx: 48, ny: 24, dx_m: 80.0, origin_x_m: -1920.0, origin_y_m: -960.0}
+      alt_m: 2.0
+      covariance: {model: exponential, L_m: 200.0}
+      cv: 2.0
+      seed: 0
+      basis: {coarsen: 8}
+      prior: {mean_kg_s_per_cell: 0.0}
+  receptors: []
+  aermod:
+    reduce: mean
+    default_stack: {height_m: 2.0}

@@ -3,7 +3,7 @@ experiment:
   cv: [0.5, 1.0, 2.0]
   source_seeds: [0]
   layout_seeds: [0, 1, 2, 3, 4]
-  n_instruments: [2, 3, 4, 8, 16]
+  n_instruments: [1, 2, 4, 8, 16]
   technologies: [point, op]
   inversion_modes: [total_uniform, spatial_gp]
   nature_run_pattern: source_heterogeneity_les_source_l{L}_cv{cv_slug}
