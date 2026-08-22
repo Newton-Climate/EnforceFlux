@@ -217,6 +217,35 @@ def run_cell(
             "reduce": "mean", "default_stack": {"height_m": 2.0},
             "receptor_path_samples": int(spec["network"]["beam_quadrature_points"]),
         }
+    elif operator_model == "blsmodelr":
+        # Fraternal-twin OSSE: LES nature run drives sonic-diagnosed intervals,
+        # bLS builds the Jacobian from those intervals + source polygons.
+        # The operator_bls.yaml template already sets model/domain/sources; we
+        # only rewrite the pieces that vary per run cell.
+        operator_template = load_yaml("operator_bls.yaml")
+        operator_template["run"]["name"] = operator_name
+        src_cfg_bls = operator_template["dispersion"]["sources"]["config"]
+        src_cfg_bls["covariance"]["L_m"] = float(L)
+        src_cfg_bls["cv"] = float(cv)
+        src_cfg_bls["seed"] = int(source_seed)
+        src_cfg_bls["basis"]["coarsen"] = int(spec["inversion"]["gp_coarsen"])
+        operator_template["dispersion"]["receptors"] = receptors
+        bls = operator_template["dispersion"]["blsmodelr"]
+        # LES-driven intervals: point at the paired nature run + its centre
+        # receptor. Falls back to the template's inline intervals if the
+        # nature run's MicroHH config isn't on disk yet.
+        nature_cfg = (
+            ROOT / "runs" / nature /
+            "dispersion/concentration_microhh/microhh_generated.yaml"
+        )
+        if nature_cfg.exists() and receptors:
+            bls.pop("intervals", None)
+            bls["intervals_from_nature"] = {
+                "microhh_config": str(nature_cfg),
+                "receptor_id": receptors[len(receptors) // 2]["id"],
+                "z_ref": 4.0, "z0": 0.05, "window_s": 300.0,
+            }
+        operator = operator_template
     else:
         raise ValueError(f"Unsupported operator model: {operator_model}")
 
@@ -226,7 +255,10 @@ def run_cell(
     n_coarse = (48 // int(spec["inversion"]["gp_coarsen"])) * (
         24 // int(spec["inversion"]["gp_coarsen"])
     )
-    for mode, template in (("total_uniform", "flux_total.yaml"), ("spatial_gp", "flux_gp.yaml")):
+    mode_templates = {"total_uniform": "flux_total.yaml", "spatial_gp": "flux_gp.yaml"}
+    enabled_modes = spec["experiment"].get("inversion_modes", list(mode_templates))
+    for mode in enabled_modes:
+        template = mode_templates[mode]
         run_name = f"{base}_{mode}"
         flux = load_yaml(template)
         flux["run"]["name"] = run_name
@@ -421,7 +453,7 @@ def main() -> None:
                         help="Restrict --full to one coefficient of variation")
     parser.add_argument("--n-instruments", type=int, choices=(1, 2, 4, 8, 16),
                         help="Restrict --full to one network size")
-    parser.add_argument("--operator-model", choices=("flexpart", "aermod"), default="flexpart")
+    parser.add_argument("--operator-model", choices=("flexpart", "aermod", "blsmodelr"), default="flexpart")
     parser.add_argument("--layout-seed", type=int, choices=(0, 1, 2, 3, 4),
                         help="Restrict --full to one network layout")
     parser.add_argument("--n-particles", type=int, help="FLEXPART convergence override")
