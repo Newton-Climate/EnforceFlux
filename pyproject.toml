@@ -24,6 +24,7 @@ static = "enforceflux.plugins.instrument_static:StaticInstrumentModel"
 aermod = "enforceflux.plugins.transport_aermod:AermodTransportOperator"
 flexpart = "enforceflux.plugins.transport_flexpart:FlexpartTransportOperator"
 microhh = "enforceflux.plugins.transport_microhh:MicroHHTransportOperator"
+blsmodelr = "enforceflux.plugins.transport_blsmodelr:BlsTransportOperator"
 
 [project.entry-points."enforceflux.transport_simulation"]
 aermod = "enforceflux.plugins.simulation_aermod:AermodSimulationModel"
