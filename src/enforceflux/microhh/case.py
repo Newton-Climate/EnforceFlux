@@ -43,6 +43,9 @@ def build_ini(cfg: MicroHHConfig) -> str:
     g = cfg.grid
     f = cfg.forcing
     name = cfg.scalar_name
+    # Scalars transported by MicroHH. The first is the emitted source scalar;
+    # any others (H2O today) are passive tracers with only an initial profile.
+    scalar_list = [name] + ([cfg.h2o_name] if cfg.include_h2o else [])
 
     # Project sources and receptors into wind-aligned box metres.
     sx, sy, sz, sig_x, sig_y, sig_z = [], [], [], [], [], []
@@ -103,7 +106,7 @@ def build_ini(cfg: MicroHHConfig) -> str:
     a("[advec]")
     a("swadvec=2i5")
     a("cflmax=1.3")
-    a(f"fluxlimit_list={name}")
+    a(f"fluxlimit_list={','.join(scalar_list)}")
     a("")
 
     a("[diff]")
@@ -142,7 +145,8 @@ def build_ini(cfg: MicroHHConfig) -> str:
         # flux. This is what makes an area source a genuine SURFACE emitter
         # rather than a volumetric blob spread over the lowest model levels.
         a(f"sbot_2d_list={name}")
-    a(f"scalar_outflow={name}")
+    # H2O has no surface flux in this configuration — passive tracer only.
+    a(f"scalar_outflow={','.join(scalar_list)}")
     a("flow_direction[west]=inflow")
     a("flow_direction[east]=outflow")
     a("flow_direction[north]=outflow")
@@ -152,7 +156,7 @@ def build_ini(cfg: MicroHHConfig) -> str:
     a("[fields]")
     a("visc=1.e-5")
     a("svisc=1.e-5")
-    a(f"slist={name}")
+    a(f"slist={','.join(scalar_list)}")
     a("rndseed=2")
     a("rndamp[th]=0.1")
     a("rndz=300.")
@@ -186,7 +190,7 @@ def build_ini(cfg: MicroHHConfig) -> str:
     a("")
 
     a("[limiter]")
-    a(f"limitlist={name}")
+    a(f"limitlist={','.join(scalar_list)}")
     a("")
 
     a("[time]")
@@ -260,7 +264,11 @@ def initial_profiles(cfg: MicroHHConfig) -> dict[str, np.ndarray]:
             th[k] = th0 + dth + lapse * (zk - (h + 0.5 * dthz))
 
     scalar = np.zeros_like(z)
-    return {"z": z, "u": u, "v": v, "th": th, cfg.scalar_name: scalar}
+    prof = {"z": z, "u": u, "v": v, "th": th, cfg.scalar_name: scalar}
+    if cfg.include_h2o:
+        # Simple exponential-decay tropospheric moisture profile [kg/kg].
+        prof[cfg.h2o_name] = cfg.h2o_surface_kg_kg * np.exp(-z / cfg.h2o_scale_height_m)
+    return prof
 
 
 def surface_flux_field(cfg: MicroHHConfig) -> np.ndarray:
@@ -345,10 +353,12 @@ def write_input_nc(cfg: MicroHHConfig, path: Path) -> Path:
         ds.createVariable("z", "f8", ("z",))[:] = z
 
         init = ds.createGroup("init")
-        for var in ("u", "v", "th", cfg.scalar_name):
+        scalar_vars = [cfg.scalar_name] + ([cfg.h2o_name] if cfg.include_h2o else [])
+        for var in ("u", "v", "th", *scalar_vars):
             init.createVariable(var, "f8", ("z",))[:] = prof[var]
-        # Inflow profile for the non-periodic (outflow) scalar.
-        init.createVariable(f"{cfg.scalar_name}_inflow", "f8", ("z",))[:] = prof[cfg.scalar_name]
+        # Inflow profile for the non-periodic (outflow) scalars.
+        for sv in scalar_vars:
+            init.createVariable(f"{sv}_inflow", "f8", ("z",))[:] = prof[sv]
     finally:
         ds.close()
     return path

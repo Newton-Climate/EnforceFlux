@@ -251,6 +251,15 @@ class MicroHHConfig:
     column_sampletime_s: float | None = None
 
     scalar_name: str = "ch4"
+
+    # H2O passive scalar. When enabled, MicroHH transports a second tracer
+    # named ``h2o_name`` with an exponentially decaying tropospheric profile.
+    # Required for realistic sonic/OP-FTIR pseudo-instruments that need water
+    # vapour (e.g. for WPL corrections or mixing-ratio conversions).
+    include_h2o: bool = True
+    h2o_name: str = "h2o"
+    h2o_surface_kg_kg: float = 0.008        # ~8 g/kg near-surface specific humidity
+    h2o_scale_height_m: float = 2000.0      # e-folding scale for q(z)
     # Multiplier on each source's physical emission_rate_kg_s when writing the
     # MicroHH strength. 1.0 → physically calibrated run (kg/s). Set to a
     # reference value only for unit-response (Jacobian) runs; the scalar is
@@ -396,6 +405,10 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
         ),
         scalar_name=str(spec.get("name", "ch4")),
         emission_scale=float(spec.get("emission_scale", 1.0)),
+        include_h2o=bool(spec.get("include_h2o", True)),
+        h2o_name=str(spec.get("h2o_name", "h2o")),
+        h2o_surface_kg_kg=float(spec.get("h2o_surface_kg_kg", 0.008)),
+        h2o_scale_height_m=float(spec.get("h2o_scale_height_m", 2000.0)),
         num_workers=int(mh.get("num_workers", 1)),
         cross_xy_m=(float(cross["xy_m"]) if "xy_m" in cross else None),
         cross_xz_m=(float(cross["xz_m"]) if "xz_m" in cross else None),
