@@ -103,6 +103,8 @@ def _run_operator(
         # Receptors come from the shared config, so no Instrument objects needed.
         result = operator.build_forward_operator(sources, [], None, config)
         row_labels = _aermod_row_labels(run, config)
+    elif run.model == "blsmodelr":
+        return _run_blsmodelr_operator(run, series, column_labels)
     else:
         config, generated = _binary_model_config(run, series, run_dir)
         config["dry_run"] = dry_run
@@ -159,6 +161,159 @@ def _aermod_row_labels(run: TransportRunConfig, config: dict[str, Any]) -> tuple
     )
 
 
+# ── bLSmodelR operator ───────────────────────────────────────────────────────
+
+_BLS_UNITS = "(kg m-3) / (kg m-2 s-1)"
+
+
+def _run_blsmodelr_operator(
+    run: TransportRunConfig, series: MetSeries, column_labels: tuple[str, ...],
+) -> TransportRunResult:
+    """Build a bLSmodelR Jacobian aligned with ``run.sources`` ordering.
+
+    Each :class:`RunSource` becomes a square polygon of side ``domain.spacing_m``
+    centered on its (x_m, y_m); the Jacobian's column ``j`` corresponds to
+    ``run.sources[j]``. Turbulence intervals come either inline (config
+    ``blsmodelr.intervals``) or from an LES-diagnosed sonic on a MicroHH
+    nature run (config ``blsmodelr.intervals_from_nature``).
+    """
+    from enforceflux.blsmodelr.footprint import (
+        build_source_polygons, jacobian_from_bls_result,
+    )
+    from enforceflux.blsmodelr.wrapper import (
+        BlsInterval, BlsModelParams, BlsRequest, BlsSensor, BlsWrapper,
+    )
+
+    opts = dict(run.options)
+    spacing = float(run.domain.spacing_m)
+    half = spacing / 2.0
+    polygons = [
+        (s.id, [
+            (s.x_m - half, s.y_m - half), (s.x_m + half, s.y_m - half),
+            (s.x_m + half, s.y_m + half), (s.x_m - half, s.y_m + half),
+        ])
+        for s in run.sources
+    ]
+    bls_sources, cell_area = build_source_polygons(polygons=polygons)
+
+    intervals = _bls_intervals(opts)
+
+    # Beam quadrature: an open-path receptor is expanded into `n_path` equally
+    # weighted subpoints along its beam. Each subpoint goes to bLS as its own
+    # sensor; the corresponding rows are averaged back into one observation row
+    # for the returned Jacobian so downstream code still sees one row per
+    # instrument. Point sensors stay as-is (one subpoint, weight 1).
+    n_path = int(opts.get("receptor_path_samples", 8))
+    instruments = translate.projected_instruments(run)
+    bls_sensors: list[BlsSensor] = []
+    sensor_groups: list[tuple[str, list[str]]] = []  # (instrument_id, subpoint_ids)
+    for inst in instruments:
+        if inst.path_length_m > 0.0 and n_path > 1:
+            bearing = np.deg2rad(float(inst.path_bearing_deg))
+            offsets = (np.arange(n_path) + 0.5) * float(inst.path_length_m) / n_path
+            sub_ids: list[str] = []
+            for k, off in enumerate(offsets):
+                sub_id = f"{inst.id}_p{k:02d}"
+                bls_sensors.append(BlsSensor(
+                    name=sub_id,
+                    x=float(inst.x + off * np.sin(bearing)),
+                    y=float(inst.y + off * np.cos(bearing)),
+                    z=float(inst.z),
+                ))
+                sub_ids.append(sub_id)
+            sensor_groups.append((inst.id, sub_ids))
+        else:
+            bls_sensors.append(BlsSensor(
+                name=inst.id, x=float(inst.x), y=float(inst.y), z=float(inst.z)
+            ))
+            sensor_groups.append((inst.id, [inst.id]))
+
+    wrapper = BlsWrapper(dict(opts.get("wrapper") or {}))
+    model_params = BlsModelParams(**dict(opts.get("model_params") or {}))
+    request = BlsRequest(
+        sensors=bls_sensors, sources=bls_sources,
+        intervals=intervals, model=model_params,
+    )
+    bls_result = wrapper.run(request)
+
+    interval_reduce = str(opts.get("interval_reduce", "mean"))
+    g_bls_sub = jacobian_from_bls_result(
+        result=bls_result,
+        sensor_order=[s.name for s in bls_sensors],
+        source_order=[s.name for s in bls_sources],
+        interval_reduce=interval_reduce,
+    )
+    # Collapse the subpoint rows back into one row per instrument (equal-weight
+    # arithmetic mean over the beam quadrature). Point sensors have a single
+    # subpoint and pass through unchanged.
+    sub_index = {s.name: k for k, s in enumerate(bls_sensors)}
+    g_bls = np.zeros((len(sensor_groups), g_bls_sub.shape[1]), dtype=float)
+    inst_row_labels: list[str] = []
+    for r, (inst_id, sub_ids) in enumerate(sensor_groups):
+        rows = np.stack([g_bls_sub[sub_index[s]] for s in sub_ids], axis=0)
+        g_bls[r] = rows.mean(axis=0)
+        inst_row_labels.append(inst_id)
+    # bLSmodelR returns "CE" — (kg m-3) per (kg m-2 s-1) areal emission — one
+    # column per source polygon. Convert to the canonical operator contract
+    # (OPERATOR_UNITS = "ng m-3 / (kg s-1)") so downstream flux code can pair
+    # the Jacobian with LES pseudo-observations without a units switch:
+    #   * divide column j by cell_area_j (m²) → (kg m-3) / (kg s-1)
+    #   * multiply by 1e12 to lift kg → ng
+    # Both operations are exact for the flux stage's per-cell state vector.
+    KG_TO_NG = 1.0e12
+    area = np.asarray(cell_area, dtype=float)
+    if area.shape[0] != g_bls.shape[1]:
+        raise RuntimeError(
+            f"bLS cell_area vector ({area.shape[0]}) does not match Jacobian "
+            f"column count ({g_bls.shape[1]}); source-polygon ordering broke."
+        )
+    g = np.asarray(g_bls, dtype=float) * (KG_TO_NG / area[np.newaxis, :])
+    return TransportRunResult(
+        model=run.model, mode="operator", units=OPERATOR_UNITS,
+        g=g,
+        row_labels=tuple(inst_row_labels),
+        column_labels=column_labels,
+        met=series,
+        meta={
+            "n_sources": len(bls_sources),
+            "cell_area_m2": cell_area.tolist(),
+            "n_intervals": len(intervals),
+            "interval_reduce": interval_reduce,
+            "workdir": bls_result.meta.get("workdir"),
+            "raw_units": _BLS_UNITS,
+            "unit_conversion": {
+                "from": _BLS_UNITS, "to": OPERATOR_UNITS,
+                "operations": ["divide_by_cell_area_m2", "multiply_by_1e12_kg_to_ng"],
+            },
+        },
+    )
+
+
+def _bls_intervals(opts: dict[str, Any]):
+    """Resolve turbulence intervals from either inline or LES-nature config."""
+    from enforceflux.blsmodelr.wrapper import BlsInterval
+
+    inline = opts.get("intervals")
+    from_nature = opts.get("intervals_from_nature")
+    if inline and from_nature:
+        raise ValueError(
+            "blsmodelr: pass either 'intervals' or 'intervals_from_nature', not both."
+        )
+    if inline:
+        return [BlsInterval(**dict(row)) for row in inline]
+    if from_nature:
+        from enforceflux.blsmodelr.met_from_les import intervals_from_microhh_output
+        from enforceflux.microhh.sim_config import load_microhh_config
+        nature = dict(from_nature)
+        cfg_path = Path(nature.pop("microhh_config"))
+        cfg = load_microhh_config(cfg_path)
+        return list(intervals_from_microhh_output(cfg, **nature))
+    raise ValueError(
+        "blsmodelr: config needs 'intervals' (inline list) or "
+        "'intervals_from_nature' (points at a MicroHH run + receptor)."
+    )
+
+
 # ── Simulation mode ──────────────────────────────────────────────────────────
 
 
@@ -170,6 +325,20 @@ def _run_simulation(
     )()
     sources = translate.projected_sources(run)
     projection = run.projection()
+
+    # LES source fields may be specified in a wind-aligned downwind/crosswind
+    # frame.  Every simulation backend receives east/north metres from the
+    # configured geographic origin, through the shared frame adapter.
+    source_bearing = run.option("source_x_bearing_deg")
+    if source_bearing is not None:
+        from dataclasses import replace
+        from enforceflux.transport import WindAlignedFrame
+        frame = WindAlignedFrame.from_origin(run.domain.origin_lon, run.domain.origin_lat, source_bearing)
+        sources = [
+            replace(source, x=float(frame.local_to_xy(source.x, source.y)[0]),
+                    y=float(frame.local_to_xy(source.x, source.y)[1]))
+            for source in sources
+        ]
 
     if run.model == "aermod":
         config = translate.aermod_config(run, series)
