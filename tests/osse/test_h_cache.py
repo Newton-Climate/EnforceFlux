@@ -24,7 +24,7 @@ def _base_cfg() -> dict:
         "dispersion": {
             "transport": {"model": "flexpart", "mode": "operator"},
             "met": {"records": [{"time": "2009-01-01T00:00", "wind_speed_m_s": 3.0}]},
-            "domain": {"origin_lon": -121.75, "origin_lat": 39.15, "spacing_m": 100.0},
+            "domain": {"center_lon": -121.75, "center_lat": 39.15, "spacing_m": 100.0},
             "receptors": [
                 {"id": "tower_n", "x_m": 0.0, "y_m": 650.0, "alt_m": 3.0},
                 {"id": "tower_e", "x_m": 600.0, "y_m": 0.0, "alt_m": 3.0},

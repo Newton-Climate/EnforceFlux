@@ -109,7 +109,7 @@ def main() -> None:
     print(f"Sources    : {len(run.sources)}")
     print(f"Receptors  : {len(run.receptors)}")
     size_x, size_y = run.domain.size_m
-    print(f"Origin     : {run.domain.origin_lon}, {run.domain.origin_lat}")
+    print(f"Center     : {run.domain.origin_lon}, {run.domain.origin_lat}")
     print(f"Domain     : x {run.domain.x_min:g}..{run.domain.x_max:g} m, "
           f"y {run.domain.y_min:g}..{run.domain.y_max:g} m "
           f"({size_x/1000:.1f} x {size_y/1000:.1f} km) @ {run.domain.spacing_m} m")

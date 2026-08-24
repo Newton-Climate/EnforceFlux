@@ -75,8 +75,8 @@ def base_config(**overrides) -> dict:
             ]
         },
         "domain": {
-            "origin_lon": SOURCE_LON,
-            "origin_lat": SOURCE_LAT,
+            "center_lon": SOURCE_LON,
+            "center_lat": SOURCE_LAT,
             "x_min": -2600.0,
             "x_max": 2600.0,
             "y_min": -2200.0,
@@ -138,6 +138,11 @@ def test_model_block_may_not_restate_a_shared_key(tmp_path):
     """The whole point of one file is that models cannot diverge."""
     with pytest.raises(ValueError, match="redefines shared key"):
         load(tmp_path, aermod={"sources": [{"id": "other", "x_m": 0.0, "y_m": 0.0}]})
+
+
+def test_retired_domain_origin_keys_are_rejected(tmp_path):
+    with pytest.raises(ValueError, match="center_lon/center_lat"):
+        load(tmp_path, domain={"origin_lon": SOURCE_LON, "origin_lat": SOURCE_LAT})
 
 
 def test_operator_mode_requires_receptors(tmp_path):
@@ -205,12 +210,19 @@ def test_canonical_field_validates_its_axes():
 
 
 def test_canonical_netcdf_round_trips(tmp_path):
+    from netCDF4 import Dataset
+
     field = CanonicalField(
         x=np.linspace(0.0, 400.0, 5),
         y=np.linspace(-200.0, 200.0, 3),
         values=np.random.default_rng(0).random((2, 3, 5)),
         timestamps=("2020-03-31T00:00", "2020-03-31T03:00"),
-        meta={"model": "test"},
+        meta={
+            "model": "test",
+            "coordinate_frame": "east_north",
+            "frame_center_lon": SOURCE_LON,
+            "frame_center_lat": SOURCE_LAT,
+        },
     )
     path = write_canonical(field, tmp_path / "canonical.nc")
     restored = read_canonical(path)
@@ -220,6 +232,31 @@ def test_canonical_netcdf_round_trips(tmp_path):
     assert restored.timestamps == field.timestamps
     assert restored.units == canonical.CANONICAL_UNITS
     assert restored.meta["model"] == "test"
+    assert restored.meta["coordinate_frame"] == "east_north"
+    assert restored.meta["Conventions"] == "EnforceFlux-canonical-3"
+    with Dataset(path) as ds:
+        assert "longitude" not in ds.variables
+        assert "latitude" not in ds.variables
+        assert ds.variables["x"].long_name == "metres east of frame origin"
+        assert ds.variables["y"].long_name == "metres north of frame origin"
+
+
+def test_canonical_writer_rejects_an_undeclared_coordinate_frame(tmp_path):
+    field = CanonicalField(
+        x=np.arange(2.0), y=np.arange(2.0), values=np.zeros((1, 2, 2))
+    )
+    with pytest.raises(ValueError, match="missing required coordinate_frame"):
+        write_canonical(field, tmp_path / "invalid.nc")
+
+
+def test_canonical_reader_rejects_pre_v3_files(tmp_path):
+    from netCDF4 import Dataset
+
+    path = tmp_path / "old.nc"
+    with Dataset(path, "w") as ds:
+        ds.Conventions = "EnforceFlux-canonical-2"
+    with pytest.raises(ValueError, match="regenerate"):
+        read_canonical(path)
 
 
 def test_flexpart_canonicaliser_collapses_the_extra_axes(tmp_path):
@@ -251,7 +288,8 @@ def test_flexpart_canonicaliser_collapses_the_extra_axes(tmp_path):
     assert field.values.shape == (n_time, n_lat, n_lon)
     # Two releases summed at the surface level → 2.0, not the 99.0 aloft.
     assert field.values == pytest.approx(2.0)
-    assert field.longitude.shape == (n_lat, n_lon)
+    assert field.x.shape == (n_lon,)
+    assert field.y.shape == (n_lat,)
     assert field.meta["model"] == "flexpart"
 
 
@@ -297,9 +335,10 @@ def test_aermod_simulation_writes_a_canonical_netcdf(tmp_path):
     assert result.output_path is not None and result.output_path.exists()
 
     field = read_canonical(result.output_path)
-    # One slice per met record, and geographic coordinates attached.
+    # One slice per met record in the sole public east/north frame.
     assert field.values.shape[0] == 2
-    assert field.longitude is not None and field.latitude is not None
+    assert field.meta["coordinate_frame"] == "east_north"
+    assert field.meta["frame_center_lon"] == pytest.approx(SOURCE_LON)
     assert field.values.max() > 0.0
     assert len(field.timestamps) == 2
 
@@ -392,6 +431,15 @@ def test_microhh_generates_a_config_its_own_loader_accepts(tmp_path):
     # the west means the box points east.
     assert native.x_bearing_deg == pytest.approx(90.0, abs=1.0)
     assert native.forcing.u_geo > 0.0
+    # A public receptor 500 m east is translated to +500 on native x; the
+    # adapter's private origin offset is the only change.
+    from enforceflux.microhh.geometry import BoxProjection
+    east = next(r for r in native.receptors if r.id == "east")
+    box = BoxProjection(native.origin_lon, native.origin_lat,
+                        native.x_bearing_deg, native.source_x0, native.source_y0)
+    east_x, east_y = box.to_box(east.lon, east.lat)
+    assert east_x == pytest.approx(native.source_x0 + 500.0, abs=1.0)
+    assert east_y == pytest.approx(native.source_y0, abs=1.0)
 
 
 def test_binary_models_report_missing_settings_clearly(tmp_path):

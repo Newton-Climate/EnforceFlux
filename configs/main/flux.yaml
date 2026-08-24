@@ -59,8 +59,8 @@ flux:
   # (constant in time) or a matching-length list.
   # receptors:
   #   - id: rec_north
-  #     lon: -121.75
-  #     lat: 39.156
+  #     x_m: 0.0
+  #     y_m: 650.0
   #     observed: [1.2, 1.3, 1.5, 1.6]
   #     sigma: 0.2
 

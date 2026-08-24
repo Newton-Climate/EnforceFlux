@@ -61,28 +61,28 @@ instrument:
   # MODES: only LP_ESN, IM_LS and BP_GML define all three of
   # good | challenging | bad. OP, EC, CH, AIR and MSAT are `good`-only.
   #
-  # Positions are lon/lat (the field NetCDF is on lon/lat axes).
+  # Positions are metres east/north of the dispersion domain origin.
   instruments:
     - id: OP_north
       tech_id: OP
       mode: good
-      lon: -121.75
-      lat: 39.156          # ~650 m north of the leak
+      x_m: 0.0
+      y_m: 650.0
       z: 3.0
       response_scale: 1.0
 
     - id: OP_east
       tech_id: OP
       mode: good
-      lon: -121.743        # ~600 m east of the leak
-      lat: 39.150
+      x_m: 600.0
+      y_m: 0.0
       z: 3.0
       response_scale: 1.0
 
     - id: OP_south
       tech_id: OP
       mode: good
-      lon: -121.75
-      lat: 39.144          # ~650 m south of the leak
+      x_m: 0.0
+      y_m: -650.0
       z: 3.0
       response_scale: 1.0
