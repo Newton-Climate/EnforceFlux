@@ -47,7 +47,7 @@ def build_ini(cfg: MicroHHConfig) -> str:
     # any others (H2O today) are passive tracers with only an initial profile.
     scalar_list = [name] + ([cfg.h2o_name] if cfg.include_h2o else [])
 
-    # Project sources and receptors into wind-aligned box metres.
+    # Project geographic points from the private native YAML into box metres.
     sx, sy, sz, sig_x, sig_y, sig_z = [], [], [], [], [], []
     for s in cfg.sources:
         x, y = proj.to_box(s.lon, s.lat)

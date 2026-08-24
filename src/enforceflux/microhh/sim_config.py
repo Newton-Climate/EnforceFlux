@@ -1,7 +1,7 @@
 """MicroHHConfig dataclass and YAML loader for MicroHH LES cases.
 
 The counterpart to :mod:`enforceflux.flexpart.sim_config`. One YAML fully
-describes a MicroHH case: the box grid, the wind-aligned projection, the
+describes a native MicroHH case: the box grid, its private projection, the
 large-scale forcing, the scalar sources, and the column receptors. The loader
 resolves relative paths against the YAML file's directory (same contract as the
 FLEXPART loader).
@@ -27,8 +27,8 @@ class SurfaceFluxPatch:
     actually measures.
 
     The square is axis-aligned in GEOGRAPHIC metres (east/north of the domain
-    origin), so in the wind-aligned LES box it appears rotated. Rasterising
-    handles that; do not pre-rotate it.
+    origin). A native box may rotate internally; the shared transport adapter
+    fixes it to east/north. Rasterising handles either case; do not pre-rotate.
     """
 
     id: str
@@ -223,7 +223,7 @@ class MicroHHConfig:
     grid: BoxGrid
     forcing: Forcing
 
-    # Wind-aligned box projection.
+    # Private native-box projection. Shared transport runs fix this to ENU.
     origin_lon: float
     origin_lat: float
     x_bearing_deg: float

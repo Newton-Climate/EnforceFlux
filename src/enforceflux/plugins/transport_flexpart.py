@@ -1,4 +1,3 @@
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -92,20 +91,6 @@ class FlexpartTransportOperator(ITransportOperator):
         runner_config = {k: config[k] for k in runner_keys if k in config}
 
         source_list = list(sources)
-        if "source_x_bearing_deg" in config:
-            # Source-field grids are commonly expressed in the wind-aligned
-            # LES frame. FLEXPART consumes east/north metres, so rotate the
-            # source positions while leaving their ordering and fluxes intact.
-            bearing = np.deg2rad(float(config["source_x_bearing_deg"]))
-            sin_b, cos_b = np.sin(bearing), np.cos(bearing)
-            source_list = [
-                replace(
-                    source,
-                    x=float(source.x * sin_b - source.y * cos_b),
-                    y=float(source.x * cos_b + source.y * sin_b),
-                )
-                for source in source_list
-            ]
 
         runner = FlexpartBackwardRunner(
             base_config=base_config, domain=domain, config=runner_config

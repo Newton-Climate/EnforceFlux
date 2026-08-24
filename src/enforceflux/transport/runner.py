@@ -326,20 +326,6 @@ def _run_simulation(
     sources = translate.projected_sources(run)
     projection = run.projection()
 
-    # LES source fields may be specified in a wind-aligned downwind/crosswind
-    # frame.  Every simulation backend receives east/north metres from the
-    # configured geographic origin, through the shared frame adapter.
-    source_bearing = run.option("source_x_bearing_deg")
-    if source_bearing is not None:
-        from dataclasses import replace
-        from enforceflux.transport import WindAlignedFrame
-        frame = WindAlignedFrame.from_origin(run.domain.origin_lon, run.domain.origin_lat, source_bearing)
-        sources = [
-            replace(source, x=float(frame.local_to_xy(source.x, source.y)[0]),
-                    y=float(frame.local_to_xy(source.x, source.y)[1]))
-            for source in sources
-        ]
-
     if run.model == "aermod":
         config = translate.aermod_config(run, series)
         result = simulation.simulate(sources, None, config)

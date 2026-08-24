@@ -4,9 +4,8 @@ MicroHH runs in a Cartesian box whose axes are metres from a domain origin.
 Our sources and instruments are specified in lon/lat (to stay consistent with
 the FLEXPART configs), so we need a small, dependency-free projection that:
 
-1. converts lon/lat to local east/north metres about a reference point
-   (equirectangular / local-tangent-plane; adequate over an LES-sized domain
-   of a few km), and
+1. converts lon/lat to the exact shared azimuthal-equidistant east/north frame,
+   using the same implementation as every other transport adapter, and
 2. rotates into a *wind-aligned* frame so the box x-axis points downwind — the
    standard LES setup for a dispersing plume with cyclic/streamwise boundaries.
 
@@ -18,7 +17,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-_EARTH_RADIUS_M = 6_371_000.0
+from enforceflux.transport.run_config import DomainProjection
 
 
 @dataclass(frozen=True)
@@ -48,9 +47,7 @@ class BoxProjection:
 
     def to_box(self, lon: float, lat: float) -> tuple[float, float]:
         """Return ``(x, y)`` box coordinates in metres for a lon/lat point."""
-        lat0 = math.radians(self.origin_lat)
-        east = math.radians(lon - self.origin_lon) * _EARTH_RADIUS_M * math.cos(lat0)
-        north = math.radians(lat - self.origin_lat) * _EARTH_RADIUS_M
+        east, north = DomainProjection(self.origin_lon, self.origin_lat).to_xy(lon, lat)
 
         # Downwind unit vector (box +x) and left-cross-stream unit vector (box
         # +y), forming a right-handed frame in the (east, north) plane.
@@ -78,7 +75,4 @@ class BoxProjection:
         east = x_down * sin_b - y_cross * cos_b
         north = x_down * cos_b + y_cross * sin_b
 
-        lat0 = math.radians(self.origin_lat)
-        lon = self.origin_lon + np.degrees(east / (_EARTH_RADIUS_M * math.cos(lat0)))
-        lat = self.origin_lat + np.degrees(north / _EARTH_RADIUS_M)
-        return lon, lat
+        return DomainProjection(self.origin_lon, self.origin_lat).to_lonlat(east, north)

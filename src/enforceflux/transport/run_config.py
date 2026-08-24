@@ -15,7 +15,7 @@ count, an LES box. Those blocks may never restate a shared key: sources and
 meteorology cannot silently diverge between models, which is the entire point
 of running them from one file.
 
-Geometry follows one contract: **``domain.origin_lon``/``origin_lat`` are the
+Geometry follows one contract: **``domain.center_lon``/``center_lat`` are the
 only geographic coordinates in the file.** The domain extent, every source and
 every receptor are Cartesian metres east/north of that origin. The lon/lat
 bounds FLEXPART needs are *derived* from the origin and the extent
@@ -59,7 +59,7 @@ def _reject_geographic(blob: dict[str, Any], context: str) -> None:
     if geographic:
         raise ValueError(
             f"{context} uses geographic key(s) {geographic}. Only "
-            "domain.origin_lon/origin_lat are given in lon/lat; every other "
+            "domain.center_lon/center_lat are given in lon/lat; every other "
             "position is Cartesian metres east/north of that origin. Use "
             "x_m/y_m (and alt_m for height)."
         )
@@ -127,7 +127,7 @@ class RunReceptor:
 class RunDomain:
     """The domain: one geographic origin, everything else Cartesian metres.
 
-    ``origin_lon``/``origin_lat`` are the **only** geographic coordinates in a
+    ``center_lon``/``center_lat`` are the **only** geographic coordinates in a
     run config. The extent is given in metres east/north of that origin, and
     the geographic bounds the lon/lat-gridded models need are *derived* from it
     (:attr:`lon_min` and friends) rather than declared, so the two can never
@@ -214,21 +214,27 @@ class RunDomain:
 
     @classmethod
     def from_dict(cls, blob: dict[str, Any]) -> "RunDomain":
+        old_anchor = sorted({"origin_lon", "origin_lat"} & set(blob))
+        if old_anchor:
+            raise ValueError(
+                f"domain uses retired anchor key(s) {old_anchor}; use "
+                "center_lon/center_lat"
+            )
         legacy = sorted({"lon_min", "lat_min", "lon_max", "lat_max"} & set(blob))
         if legacy:
             raise ValueError(
                 f"domain declares geographic bounds {legacy}. These are now derived: "
-                "give domain.origin_lon/origin_lat plus the Cartesian extent "
+                "give domain.center_lon/center_lat plus the Cartesian extent "
                 "x_min/x_max/y_min/y_max in metres east/north of that origin."
             )
         _require(
             blob,
-            ["origin_lon", "origin_lat", "x_min", "x_max", "y_min", "y_max"],
+            ["center_lon", "center_lat", "x_min", "x_max", "y_min", "y_max"],
             "domain",
         )
         return cls(
-            origin_lon=float(blob["origin_lon"]),
-            origin_lat=float(blob["origin_lat"]),
+            origin_lon=float(blob["center_lon"]),
+            origin_lat=float(blob["center_lat"]),
             x_min=float(blob["x_min"]),
             x_max=float(blob["x_max"]),
             y_min=float(blob["y_min"]),
@@ -463,53 +469,3 @@ class DomainProjection:
     def to_lonlat(self, x, y):
         """Local metres → longitude/latitude."""
         return self._transformer(inverse=True).transform(x, y)
-
-
-@dataclass(frozen=True)
-class WindAlignedFrame:
-    """A wind-aligned metre frame anchored to a :class:`DomainProjection`.
-
-    Transport configs always locate their domain, sources, and receptors in
-    east/north metres from ``domain.origin_lon/origin_lat``.  LES source fields
-    are often expressed instead in local downwind/crosswind metres.  This
-    adapter is the sole conversion between those two metric frames; it prevents
-    individual drivers from fitting ad-hoc lon/lat affine transforms or from
-    applying grid-origin offsets inconsistently.
-    """
-
-    projection: DomainProjection
-    x_bearing_deg: float
-
-    @classmethod
-    def from_origin(cls, origin_lon: float, origin_lat: float, x_bearing_deg: float):
-        return cls(DomainProjection(origin_lon, origin_lat), float(x_bearing_deg))
-
-    def local_to_xy(self, x_downwind_m, y_crosswind_m):
-        """Wind-aligned metres → east/north metres from the domain origin."""
-        import numpy as np
-
-        bearing = np.deg2rad(self.x_bearing_deg)
-        x = np.asarray(x_downwind_m)
-        y = np.asarray(y_crosswind_m)
-        return x * np.sin(bearing) - y * np.cos(bearing), x * np.cos(bearing) + y * np.sin(bearing)
-
-    def xy_to_local(self, east_m, north_m):
-        """East/north metres from the domain origin → wind-aligned metres."""
-        import numpy as np
-
-        bearing = np.deg2rad(self.x_bearing_deg)
-        east = np.asarray(east_m)
-        north = np.asarray(north_m)
-        return east * np.sin(bearing) + north * np.cos(bearing), -east * np.cos(bearing) + north * np.sin(bearing)
-
-    def local_to_lonlat(self, x_downwind_m, y_crosswind_m):
-        east, north = self.local_to_xy(x_downwind_m, y_crosswind_m)
-        return self.projection.to_lonlat(east, north)
-
-    def lonlat_to_local(self, longitude, latitude):
-        east, north = self.projection.to_xy(longitude, latitude)
-        return self.xy_to_local(east, north)
-
-    def local_bearing_to_geographic(self, bearing_deg: float) -> float:
-        """Compass bearing measured in the local frame → geographic bearing."""
-        return (self.x_bearing_deg + float(bearing_deg) - 90.0) % 360.0

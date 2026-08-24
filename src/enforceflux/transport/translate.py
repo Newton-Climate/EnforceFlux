@@ -44,7 +44,7 @@ def build_met_series(run: TransportRunConfig) -> MetSeries:
         if geographic:
             raise ValueError(
                 f"met.era5 declares {geographic}. The met column is taken at "
-                "domain.origin_lon/origin_lat — the run's single geographic "
+                "domain.center_lon/center_lat — the run's single geographic "
                 "anchor — so remove these."
             )
         lon, lat = run.origin_lonlat
@@ -328,13 +328,12 @@ def write_microhh_config(
 ) -> Path:
     """Generate a native MicroHH case YAML and return its path.
 
-    The LES box is aligned with the mean wind (its ``x_bearing_deg`` comes from
-    the same met series every other model uses), and the forcing block is the
-    canonical met adapted by :func:`enforceflux.meteo.to_microhh_forcing`.
+    The LES native box uses the shared axes (+x east, +y north). Wind is
+    rotated into those axes in the forcing block; it does not rotate geometry.
     """
     import yaml
 
-    from enforceflux.meteo import microhh_box_bearing, to_microhh_forcing
+    from enforceflux.meteo import to_microhh_forcing
 
     options = run.options
     if "executable" not in options:
@@ -342,14 +341,19 @@ def write_microhh_config(
             "Running MicroHH needs a 'microhh:' block with 'executable' — the "
             "compiled LES binary has no counterpart in the other models."
         )
+    if "x_bearing_deg" in options:
+        raise ValueError(
+            "microhh.x_bearing_deg is no longer configurable; the adapter fixes "
+            "+x east and +y north for the shared coordinate contract"
+        )
 
     reduce = str(options.get("met_reduce", "daytime_mean"))
     forcing = to_microhh_forcing(
         series,
+        x_bearing_deg=90.0,
         reduce=reduce,
         min_directional_consistency=float(options.get("min_directional_consistency", 0.6)),
     )
-    bearing = microhh_box_bearing(series, reduce=reduce)
 
     grid = dict(options.get("grid") or {})
     itot = int(grid.get("itot", 192))
@@ -387,12 +391,12 @@ def write_microhh_config(
             # Optional near-surface stretching; absent keys leave it uniform.
             **{k: float(grid[k]) for k in ("dz_surface_m", "dz_max_m") if k in grid},
         },
-        # MicroHH re-projects lon/lat into its own wind-aligned box, so the
-        # case file is written in lon/lat about the same shared origin.
+        # Private native offsets place the public (0, 0) origin inside the box.
+        # The axes themselves remain east/north.
         "domain": {
             "origin_lon": run.domain.origin_lon,
             "origin_lat": run.domain.origin_lat,
-            "x_bearing_deg": float(options.get("x_bearing_deg", bearing)),
+            "x_bearing_deg": 90.0,
             "source_x0": float(options.get("source_x0", 0.15 * xsize)),
             "source_y0": float(options.get("source_y0", 0.5 * ysize)),
         },
