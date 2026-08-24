@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 # Make apps/ importable for flux_inputs helpers.
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -104,7 +105,9 @@ def test_instrument_total_only_uniform_template_is_truth_independent(tmp_path):
     with Dataset(obs, "w", format="NETCDF4") as ds:
         ds.createDimension("time", 1)
         ds.createDimension("instrument", G_fine.shape[0])
-        ds.createVariable("y_obs", "f8", ("time", "instrument"))[:] = 1.0
+        y_obs = ds.createVariable("y_obs", "f8", ("time", "instrument"))
+        y_obs.units = "ng m-3"
+        y_obs[:] = 1.0
         ds.createVariable("valid_mask", "i1", ("time", "instrument"))[:] = 1
         ds.createVariable("noise_variance", "f8", ("time", "instrument"))[:] = 0.1
 
@@ -125,3 +128,18 @@ def test_instrument_total_only_uniform_template_is_truth_independent(tmp_path):
     assert np.allclose(G_total[:, 0], G_fine @ area_weights)
     assert names == ["Q_total"]
     assert diagnostics["inversion_template"] == "uniform"
+    assert result[5]["units"] == {
+        "jacobian_units": "ng m-3 / (kg s-1)",
+        "y_obs_units": "ng m-3",
+        "state_units": "kg s-1",
+        "obs_units": "ng m-3",
+    }
+
+
+def test_operator_observation_units_must_match():
+    from flux_inputs import _assert_operator_obs_units
+
+    with pytest.raises(ValueError, match="Units mismatch"):
+        _assert_operator_obs_units("ng m-3 / (kg s-1)", "kg m-3")
+    with pytest.raises(ValueError, match="missing a `units` attribute"):
+        _assert_operator_obs_units("ng m-3 / (kg s-1)", "")

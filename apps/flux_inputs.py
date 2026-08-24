@@ -18,6 +18,65 @@ from enforceflux.source_fields.prior import build_prior_covariance
 # --- end M2 ---
 
 
+def _assert_operator_obs_units(jacobian_units: str, y_units: str) -> dict[str, str]:
+    """Enforce that G maps state-flux units (kg s-1) to the observation units.
+
+    ``jacobian.npz['units']`` is a string of the shape ``"<obs> / (<state>)"``
+    (e.g. ``"ng m-3 / (kg s-1)"``). We split on the first ``" / "`` and check:
+
+      * the obs half matches ``y_obs.units`` exactly (case- and space-sensitive
+        so units like ``"kg m-3"`` and ``"ng m-3"`` don't silently mix);
+      * the state half canonicalises to ``kg s-1`` so the flux stage's state
+        vector is unambiguously per-cell emission rate.
+
+    Returns a metadata dict describing the checked units, to be stamped into
+    ``obs_meta`` / ``summary.json`` so downstream users can reproduce which
+    physical products were paired.
+    """
+    def _norm(s: str) -> str:
+        return " ".join((s or "").strip().split())
+
+    j = _norm(jacobian_units)
+    y = _norm(y_units)
+    if not j:
+        raise ValueError(
+            "Operator jacobian.npz is missing a `units` field — the flux "
+            "inversion cannot verify units × Jacobian == observations. "
+            "Rebuild the dispersion output with a units-tagged operator."
+        )
+    if " / " not in j:
+        raise ValueError(
+            f"Jacobian units {j!r} must be formatted '<obs> / (<state>)' "
+            f"so the flux stage can check compatibility with y_obs."
+        )
+    obs_side, state_side = (part.strip() for part in j.split(" / ", 1))
+    state_side = state_side.strip("()")
+    if _norm(state_side) != "kg s-1":
+        raise ValueError(
+            f"Jacobian state units {state_side!r} must be 'kg s-1' — the flux "
+            f"stage's state vector is per-source total emission rate in kg/s."
+        )
+    if not y:
+        raise ValueError(
+            "y_obs is missing a `units` attribute in the instrument NetCDF; "
+            "instrument stage must stamp units so unit checks are enforceable."
+        )
+    if _norm(obs_side) != y:
+        raise ValueError(
+            "Units mismatch between Jacobian and observations:\n"
+            f"  Jacobian obs half : {obs_side!r}\n"
+            f"  y_obs units       : {y!r}\n"
+            "Rebuild the dispersion operator with a matching units contract, "
+            "or convert the instrument stage's obs to the operator's obs units."
+        )
+    return {
+        "jacobian_units": j,
+        "y_obs_units": y,
+        "state_units": _norm(state_side),
+        "obs_units": _norm(obs_side),
+    }
+
+
 def _time_resolved_G(
     cvar,
     x: np.ndarray,
@@ -176,6 +235,7 @@ def build_from_prebuilt_operator_with_instrument(
 
     jac = np.load(dispersion_up.file("jacobian"))
     G_fine = np.asarray(jac["G"], dtype=float)
+    jacobian_units = str(jac["units"]) if "units" in jac.files else ""
     mapping = load_mapping(dispersion_up.file("basis_mapping"))
     W = np.asarray(mapping.W, dtype=float)
     counts = W.sum(axis=1)
@@ -187,6 +247,7 @@ def build_from_prebuilt_operator_with_instrument(
         if y_name is None:
             raise KeyError("Instrument NetCDF must include y_obs/observation")
         y_grid = np.asarray(ds.variables[y_name][:], dtype=float)
+        y_units = str(getattr(ds.variables[y_name], "units", "") or "")
         if y_grid.ndim != 2:
             raise ValueError(f"Expected y_obs shape (time, instrument), got {y_grid.shape}")
         n_time, n_inst = y_grid.shape
@@ -200,6 +261,14 @@ def build_from_prebuilt_operator_with_instrument(
             variance_grid = np.asarray(ds.variables[variance_name][:], dtype=float)
             if variance_grid.shape != y_grid.shape:
                 raise ValueError("noise_variance must have the same shape as y_obs")
+
+    # ── units contract (state × Jacobian = y_obs) ─────────────────────────
+    # Jacobian.units must parse as "<obs_units> / (<state_units>)". We require
+    # <obs_units> == y_obs.units and <state_units> to be a per-source-flux unit
+    # so the inversion's state vector reads as kg s-1 (per cell) unambiguously.
+    # Any mismatch is fatal — silently rescaling here would move a physical
+    # error into a numeric one that reads as an underdetermined inversion.
+    units_meta = _assert_operator_obs_units(jacobian_units, y_units)
 
     # A backward LPDM footprint represents one window-integrated observation
     # per instrument.  Reduce the LES pseudo-observation time series over the
@@ -251,6 +320,7 @@ def build_from_prebuilt_operator_with_instrument(
         "instrument_netcdf": str(instrument_netcdf), "y_variable": y_name,
         "n_time": int(n_time), "n_flux_windows": 1,
         "n_observations_total": int(y_flat.size), "n_observations_used": int(valid.sum()),
+        "units": units_meta,
     }
     diagnostics = {
         "L_true_m": L_true_m, "L_B_m": L_B_m,

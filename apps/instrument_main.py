@@ -196,6 +196,11 @@ def main() -> None:
         field_instruments = _validate_instruments(instruments, x_axis, y_axis)
         op = InstrumentOperator(field_instruments, rng=np.random.default_rng(seed))
         conc_var = src.variables[vname]
+        # The instrument stage returns whatever the upstream concentration
+        # variable measures; propagate its units string verbatim into obs.nc
+        # so the flux stage can pair Jacobian units × y_obs units unambiguously.
+        # Fallback to the canonical LES unit when the source didn't tag it.
+        field_units = str(getattr(conc_var, "units", "") or "ng m-3")
 
         time_size = 1
         if "time" in [d.lower() for d in conc_var.dimensions]:
@@ -267,10 +272,10 @@ def main() -> None:
         v_valid[:] = valid_mask.astype(np.int8)
         v_nvar[:] = noise_var
 
-        v_sample.units = "same_as_input_field"
-        v_clean.units = "instrument_native_or_scaled"
-        v_obs.units = "instrument_native_or_scaled"
-        v_nvar.units = "(instrument_units)^2"
+        v_sample.units = field_units
+        v_clean.units = field_units
+        v_obs.units = field_units
+        v_nvar.units = f"({field_units})^2"
         dst.title = "EnforceFlux instrument stage — obs"
         dst.source_dispersion = str(dispersion_up.root)
         dst.source_concentration_field = str(sim_nc)
