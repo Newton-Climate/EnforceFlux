@@ -1,0 +1,74 @@
+"""Integration test for the bLSmodelR transport operator plugin.
+
+Uses ``dry_run=True`` so the R shim runs its analytic stub — no bLSmodelR
+install required, only ``Rscript`` on ``PATH``.
+"""
+from __future__ import annotations
+
+import shutil
+
+import numpy as np
+import pytest
+
+from enforceflux.instrument import Instrument
+from enforceflux.plugins.transport_blsmodelr import BlsTransportOperator
+
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("Rscript") is None,
+    reason="Rscript not on PATH; needed even for the bLS dry-run shim.",
+)
+
+
+def _make_instruments() -> list[Instrument]:
+    return [
+        Instrument(id="s0", tech_id="OP", x=-100.0, y=0.0, z=2.0),
+        Instrument(id="s1", tech_id="OP", x=0.0, y=0.0, z=2.0),
+        Instrument(id="s2", tech_id="OP", x=100.0, y=50.0, z=2.0),
+    ]
+
+
+def _config() -> dict:
+    return {
+        "source_grid": {
+            "x_bounds": [-500.0, 500.0],
+            "y_bounds": [-500.0, 500.0],
+            "nx": 10,
+            "ny": 10,
+        },
+        "intervals": [
+            {
+                "id": "t0",
+                "u_star": 0.35,
+                "L": -50.0,
+                "z0": 0.05,
+                "wind_dir_deg": 270.0,
+                "wind_speed": 3.0,
+                "z_ref": 4.0,
+            }
+        ],
+        "interval_reduce": "mean",
+        "wrapper": {"dry_run": True, "rscript": "Rscript"},
+    }
+
+
+def test_bls_transport_operator_builds_jacobian():
+    op = BlsTransportOperator()
+    instruments = _make_instruments()
+    config = _config()
+
+    result = op.build_forward_operator(
+        sources=[], instruments=instruments, domain=None, config=config
+    )
+
+    nx = config["source_grid"]["nx"]
+    ny = config["source_grid"]["ny"]
+    assert result.g.shape == (len(instruments), nx * ny)
+    assert np.all(np.isfinite(result.g))
+    assert np.all(result.g >= 0.0)
+
+    assert result.meta["n_sources"] == nx * ny
+    assert result.meta["n_intervals"] == 1
+    assert result.meta["cell_area_m2"] == pytest.approx(
+        (1000.0 / nx) * (1000.0 / ny)
+    )

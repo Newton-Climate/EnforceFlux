@@ -15,13 +15,13 @@ class StaticSourceModel(ISourceModel):
         sources_blob = config.get("sources", [])
         sources: list[Source] = []
         for item in sources_blob:
-            _require_keys(item, ["id", "kind", "x", "y", "flux_true"], "source")
+            _require_keys(item, ["id", "kind", "x_m", "y_m", "flux_true"], "source")
             sources.append(
                 Source(
                     id=str(item["id"]),
                     kind=str(item["kind"]),
-                    x=float(item["x"]),
-                    y=float(item["y"]),
+                    x=float(item["x_m"]),
+                    y=float(item["y_m"]),
                     z=float(item.get("z", item.get("alt", 0.0))),
                     flux_true=float(item["flux_true"]),
                     flux_prior_mean=float(item.get("flux_prior_mean", 0.0)),

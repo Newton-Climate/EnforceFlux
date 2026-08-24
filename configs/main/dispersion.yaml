@@ -49,7 +49,7 @@
 # with the FLEXPART submodule instead of inline records.
 #
 # ── GEOMETRY IS A CONTRACT ──────────────────────────────────────────────────
-# domain.origin_lon/origin_lat are the ONLY geographic coordinates in this
+# domain.center_lon/center_lat are the ONLY geographic coordinates in this
 # file. The domain extent, every source and every receptor are Cartesian
 # metres east/north of that origin. Declaring lon/lat anywhere else —
 # including domain bounds, a source, a receptor, or met.era5 — is rejected
@@ -114,8 +114,8 @@ dispersion:
   domain:
     # [required] THE ONLY lon/lat in this file. Everything below — and every
     # source and receptor — is metres east/north of this point.
-    origin_lon: -121.75
-    origin_lat: 39.15
+    center_lon: -121.75
+    center_lat: 39.15
 
     # [required] Extent in metres relative to the origin; max must exceed min.
     x_min: -4300.0

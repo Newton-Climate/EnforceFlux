@@ -74,9 +74,7 @@ def _write_per_source_nc(path: Path, fields, source_ids) -> None:
     """Stack per-source ``(time, y, x)`` fields into the multi-release NetCDF
     that ``flux_helpers.prepare_sim_transport`` reads.
 
-    The canonical metric axes (``x``/``y``) are written as the ``longitude`` /
-    ``latitude`` coordinate variables; receptors are then addressed in the same
-    metric frame, keeping the round-trip self-consistent without a projection.
+    The axes and receptors use the canonical east/north metre frame directly.
     """
     from netCDF4 import Dataset
 
@@ -87,19 +85,19 @@ def _write_per_source_nc(path: Path, fields, source_ids) -> None:
     with Dataset(path, "w") as ds:
         ds.createDimension("releases", len(fields))
         ds.createDimension("time", n_time)
-        ds.createDimension("latitude", ny)
-        ds.createDimension("longitude", nx)
-        ds.createVariable("latitude", "f8", ("latitude",))[:] = np.asarray(ref.y)
-        ds.createVariable("longitude", "f8", ("longitude",))[:] = np.asarray(ref.x)
+        ds.createDimension("y", ny)
+        ds.createDimension("x", nx)
+        ds.createVariable("y", "f8", ("y",))[:] = np.asarray(ref.y)
+        ds.createVariable("x", "f8", ("x",))[:] = np.asarray(ref.x)
         var = ds.createVariable(
-            "ch4_mixing_ratio", "f8", ("releases", "time", "latitude", "longitude")
+            "ch4_mixing_ratio", "f8", ("releases", "time", "y", "x")
         )
         var[:] = stacked
         ds.source_ids = ",".join(source_ids)
         ds.n_point_sources = len(fields)
 
 
-def _invert_nc(nc_path, receptors_lonlat, tmp_path, *, sigma=1.0):
+def _invert_nc(nc_path, receptors_xy, tmp_path, *, sigma=1.0):
     """Run flux_main's receptors-mode time-resolved inversion on a NetCDF.
 
     Reads the source/time counts from the file, injects a time-varying truth via
@@ -125,8 +123,8 @@ def _invert_nc(nc_path, receptors_lonlat, tmp_path, *, sigma=1.0):
             "level_index": 0,
         },
         "receptors": [
-            {"id": f"r{i}", "lon": float(lon), "lat": float(lat)}
-            for i, (lon, lat) in enumerate(receptors_lonlat)
+            {"id": f"r{i}", "x_m": float(x), "y_m": float(y)}
+            for i, (x, y) in enumerate(receptors_xy)
         ],
         "observations": {
             "mode": "synthetic_from_truth",
@@ -215,8 +213,8 @@ def _aermod_field(tmp_path, source_x, source_y, tag):
         },
         "met": {"records": met_records},
         "domain": {
-            "origin_lon": SOURCE_LON,
-            "origin_lat": SOURCE_LAT,
+            "center_lon": SOURCE_LON,
+            "center_lat": SOURCE_LAT,
             "x_min": -2600.0,
             "x_max": 2600.0,
             "y_min": -2200.0,
@@ -296,7 +294,7 @@ def test_flexpart_time_resolved_flux_inversion(tmp_path):
         ldirect=1,
         output_per_source=True,  # per-release pointspec axis
     )
-    nc = FlexpartSimulation(cfg).run()
+    native_nc = FlexpartSimulation(cfg).run()
 
     # Receptors ringing the two sources so the plume is sampled whatever the
     # (bundled) wind direction is.
@@ -304,7 +302,33 @@ def test_flexpart_time_resolved_flux_inversion(tmp_path):
         (7.5, 51.7), (7.7, 51.5), (7.5, 51.3),
         (7.9, 51.7), (8.1, 51.5), (7.9, 51.3),
     ]
-    diag = _invert_nc(nc, receptors_lonlat, tmp_path)
+    # Preserve FLEXPART's release axis while converting its private geographic
+    # grid to the public ENU contract used by the inversion helper.
+    from netCDF4 import Dataset
+    from enforceflux.transport import DomainProjection
+    projection = DomainProjection(7.7, 51.5)
+    nc = tmp_path / "fp_canonical_xy.nc"
+    with Dataset(native_nc) as src, Dataset(nc, "w") as dst:
+        native = src.variables["ch4_mixing_ratio"]
+        data = np.asarray(native[:])
+        lons = np.asarray(src.variables["longitude"][:], dtype=float)
+        lats = np.asarray(src.variables["latitude"][:], dtype=float)
+        x, _ = projection.to_xy(lons, np.full_like(lons, projection.centre_lat))
+        _, y = projection.to_xy(np.full_like(lats, projection.centre_lon), lats)
+        for name, size in (("releases", data.shape[1]), ("time", data.shape[2]),
+                           ("y", data.shape[-2]), ("x", data.shape[-1])):
+            dst.createDimension(name, size)
+        dst.createVariable("x", "f8", ("x",))[:] = x
+        dst.createVariable("y", "f8", ("y",))[:] = y
+        out = dst.createVariable(
+            "ch4_mixing_ratio", "f8", ("releases", "time", "y", "x")
+        )
+        # Native leading axes are nageclass, pointspec, time, height.
+        out[:] = data[0, :, :, 0, :, :]
+        dst.source_ids = "srcA,srcB"
+        dst.n_point_sources = 2
+    receptor_xy = [projection.to_xy(lon, lat) for lon, lat in receptors_lonlat]
+    diag = _invert_nc(nc, receptor_xy, tmp_path)
     _assert_time_resolved_recovery(diag)
 
 
@@ -320,7 +344,7 @@ def _microhh_field(tmp_path, tag, source_x, source_y):
                       "start": "2020-04-01T00:00:00", "end": "2020-04-01T05:00:00"},
         "met": {"era5": {"meteo_dir": str(ERA5_DIR), "surface_roughness_m": 0.15}},
         "domain": {
-            "origin_lon": SOURCE_LON, "origin_lat": SOURCE_LAT,
+            "center_lon": SOURCE_LON, "center_lat": SOURCE_LAT,
             "x_min": -2600.0, "x_max": 2600.0, "y_min": -2200.0, "y_max": 2200.0,
             "spacing_m": 200.0, "receptor_height_m": 2.0,
         },

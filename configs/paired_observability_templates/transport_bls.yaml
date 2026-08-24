@@ -1,0 +1,99 @@
+# Backward Lagrangian Stochastic (bLS) transport template.
+#
+# bLS (implemented via the R `bLSmodelR` package, plugin key `blsmodelr`) treats
+# each source/receptor pair by releasing particles from the sensor and letting
+# them trace back through prescribed turbulence statistics. Compared to the
+# other transport options in this repo:
+#   - FLEXPART/AERMOD: full Lagrangian/Gaussian dispersion driven by gridded
+#     meteorology. Best for real-world OSSEs at field or landscape scale.
+#   - MicroHH LES: resolves turbulence explicitly, expensive, used as the
+#     "nature run" that produces synthetic observations.
+#   - bLS: cheap surface-layer inversion operator parameterised by a handful of
+#     turbulence scalars (u*, L, z0, wind, sigma_uvw). Ideal when a plot-scale
+#     experiment has usable sonic-anemometer statistics.
+#
+# Fraternal-twin OSSE (per source_heterogeneity_OSSE_design_memo section 5):
+# the nature run comes from LES, the inversion uses bLS, and the turbulence
+# statistics fed to bLS are DIAGNOSED FROM THE SAME LES rather than from the
+# ground-truth emission field. This keeps LES and bLS as fraternal (not
+# identical) twins: they share the same atmosphere but disagree on the closure
+# used to invert it, which avoids the inverse crime while still testing bLS
+# under realistic surface-layer forcing.
+#
+# Example scenario: a 1 km x 1 km rice paddy with three sensors on the
+# perimeter, a 20 x 20 emission grid, and three turbulence windows spanning
+# unstable, near-neutral, and stable stability classes.
+
+stage: dispersion
+run: {name: TEMPLATE_TRANSPORT_BLS}
+inputs: {}
+dispersion:
+  transport: {model: blsmodelr, mode: operator, start: '2026-07-01T12:00:00', end: '2026-07-01T18:00:00'}
+  domain:
+    origin_lon: -121.75
+    origin_lat: 39.15
+    x_min: -500.0
+    x_max: 500.0
+    y_min: -500.0
+    y_max: 500.0
+    spacing_m: 50.0
+    receptor_height_m: 2.0
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 5.0e-3
+      grid: {nx: 20, ny: 20, dx_m: 50.0, origin_x_m: -500.0, origin_y_m: -500.0}
+      alt_m: 0.2
+      covariance: {model: exponential, L_m: 200.0}
+      cv: 0.75
+      seed: 0
+      basis: {coarsen: 4}
+      prior: {mean_kg_s_per_cell: 0.0}
+  receptors:
+    - {id: sensor_n, x_m:    0.0, y_m:  480.0, alt_m: 2.0}
+    - {id: sensor_se, x_m:  420.0, y_m: -300.0, alt_m: 2.0}
+    - {id: sensor_sw, x_m: -420.0, y_m: -300.0, alt_m: 2.0}
+  blsmodelr:
+    source_grid:
+      x_bounds: [-500.0, 500.0]
+      y_bounds: [-500.0, 500.0]
+      nx: 20
+      ny: 20
+    # Turbulence windows diagnosed from the LES nature run (not from the true
+    # emission field). Unstable / near-neutral / stable in that order.
+    intervals:
+      - id: unstable_midday
+        u_star: 0.42
+        L: -25.0
+        z0: 0.05
+        wind_dir_deg: 260.0
+        wind_speed: 2.4
+        z_ref: 4.0
+        sd_u: 1.05
+        sd_v: 0.90
+        sd_w: 0.62
+      - id: neutral_afternoon
+        u_star: 0.38
+        L: -250.0
+        z0: 0.05
+        wind_dir_deg: 275.0
+        wind_speed: 3.6
+        z_ref: 4.0
+        sd_u: 0.85
+        sd_v: 0.75
+        sd_w: 0.48
+      - id: stable_evening
+        u_star: 0.18
+        L: 40.0
+        z0: 0.05
+        wind_dir_deg: 300.0
+        wind_speed: 1.8
+        z_ref: 4.0
+        sd_u: 0.55
+        sd_v: 0.45
+        sd_w: 0.22
+    interval_reduce: mean
+    wrapper:
+      rscript: Rscript
+      dry_run: false
+      timeout_s: null

@@ -18,14 +18,73 @@ from enforceflux.source_fields.prior import build_prior_covariance
 # --- end M2 ---
 
 
+def _assert_operator_obs_units(jacobian_units: str, y_units: str) -> dict[str, str]:
+    """Enforce that G maps state-flux units (kg s-1) to the observation units.
+
+    ``jacobian.npz['units']`` is a string of the shape ``"<obs> / (<state>)"``
+    (e.g. ``"ng m-3 / (kg s-1)"``). We split on the first ``" / "`` and check:
+
+      * the obs half matches ``y_obs.units`` exactly (case- and space-sensitive
+        so units like ``"kg m-3"`` and ``"ng m-3"`` don't silently mix);
+      * the state half canonicalises to ``kg s-1`` so the flux stage's state
+        vector is unambiguously per-cell emission rate.
+
+    Returns a metadata dict describing the checked units, to be stamped into
+    ``obs_meta`` / ``summary.json`` so downstream users can reproduce which
+    physical products were paired.
+    """
+    def _norm(s: str) -> str:
+        return " ".join((s or "").strip().split())
+
+    j = _norm(jacobian_units)
+    y = _norm(y_units)
+    if not j:
+        raise ValueError(
+            "Operator jacobian.npz is missing a `units` field — the flux "
+            "inversion cannot verify units × Jacobian == observations. "
+            "Rebuild the dispersion output with a units-tagged operator."
+        )
+    if " / " not in j:
+        raise ValueError(
+            f"Jacobian units {j!r} must be formatted '<obs> / (<state>)' "
+            f"so the flux stage can check compatibility with y_obs."
+        )
+    obs_side, state_side = (part.strip() for part in j.split(" / ", 1))
+    state_side = state_side.strip("()")
+    if _norm(state_side) != "kg s-1":
+        raise ValueError(
+            f"Jacobian state units {state_side!r} must be 'kg s-1' — the flux "
+            f"stage's state vector is per-source total emission rate in kg/s."
+        )
+    if not y:
+        raise ValueError(
+            "y_obs is missing a `units` attribute in the instrument NetCDF; "
+            "instrument stage must stamp units so unit checks are enforceable."
+        )
+    if _norm(obs_side) != y:
+        raise ValueError(
+            "Units mismatch between Jacobian and observations:\n"
+            f"  Jacobian obs half : {obs_side!r}\n"
+            f"  y_obs units       : {y!r}\n"
+            "Rebuild the dispersion operator with a matching units contract, "
+            "or convert the instrument stage's obs to the operator's obs units."
+        )
+    return {
+        "jacobian_units": j,
+        "y_obs_units": y,
+        "state_units": _norm(state_side),
+        "obs_units": _norm(obs_side),
+    }
+
+
 def _time_resolved_G(
     cvar,
-    lons: np.ndarray,
-    lats: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
     *,
     n_sources: int,
-    site_lons: np.ndarray,
-    site_lats: np.ndarray,
+    site_x: np.ndarray,
+    site_y: np.ndarray,
     level_index: int,
     n_time_kernel: int,
     n_time_obs: int,
@@ -41,18 +100,18 @@ def _time_resolved_G(
     ``n_sources * n_flux``) to the flat observation vector (receptor-major,
     time-minor; length ``n_sites * n_time_obs``).
     """
-    n_sites = len(site_lons)
+    n_sites = len(site_x)
     G = np.zeros((n_sites * n_time_obs, n_sources * n_flux), dtype=float)
     for j in range(n_sources):
         for i in range(n_sites):
             step = sample_step_response(
                 cvar,
-                lons,
-                lats,
+                x,
+                y,
                 release_index=j,
                 level_index=level_index,
-                lon=float(site_lons[i]),
-                lat=float(site_lats[i]),
+                site_x=float(site_x[i]),
+                site_y=float(site_y[i]),
                 n_time=n_time_kernel,
             )
             impulse = step_to_impulse(step)
@@ -176,6 +235,7 @@ def build_from_prebuilt_operator_with_instrument(
 
     jac = np.load(dispersion_up.file("jacobian"))
     G_fine = np.asarray(jac["G"], dtype=float)
+    jacobian_units = str(jac["units"]) if "units" in jac.files else ""
     mapping = load_mapping(dispersion_up.file("basis_mapping"))
     W = np.asarray(mapping.W, dtype=float)
     counts = W.sum(axis=1)
@@ -187,6 +247,7 @@ def build_from_prebuilt_operator_with_instrument(
         if y_name is None:
             raise KeyError("Instrument NetCDF must include y_obs/observation")
         y_grid = np.asarray(ds.variables[y_name][:], dtype=float)
+        y_units = str(getattr(ds.variables[y_name], "units", "") or "")
         if y_grid.ndim != 2:
             raise ValueError(f"Expected y_obs shape (time, instrument), got {y_grid.shape}")
         n_time, n_inst = y_grid.shape
@@ -200,6 +261,14 @@ def build_from_prebuilt_operator_with_instrument(
             variance_grid = np.asarray(ds.variables[variance_name][:], dtype=float)
             if variance_grid.shape != y_grid.shape:
                 raise ValueError("noise_variance must have the same shape as y_obs")
+
+    # ── units contract (state × Jacobian = y_obs) ─────────────────────────
+    # Jacobian.units must parse as "<obs_units> / (<state_units>)". We require
+    # <obs_units> == y_obs.units and <state_units> to be a per-source-flux unit
+    # so the inversion's state vector reads as kg s-1 (per cell) unambiguously.
+    # Any mismatch is fatal — silently rescaling here would move a physical
+    # error into a numeric one that reads as an underdetermined inversion.
+    units_meta = _assert_operator_obs_units(jacobian_units, y_units)
 
     # A backward LPDM footprint represents one window-integrated observation
     # per instrument.  Reduce the LES pseudo-observation time series over the
@@ -251,6 +320,7 @@ def build_from_prebuilt_operator_with_instrument(
         "instrument_netcdf": str(instrument_netcdf), "y_variable": y_name,
         "n_time": int(n_time), "n_flux_windows": 1,
         "n_observations_total": int(y_flat.size), "n_observations_used": int(valid.sum()),
+        "units": units_meta,
     }
     diagnostics = {
         "L_true_m": L_true_m, "L_B_m": L_B_m,
@@ -306,11 +376,11 @@ def build_from_receptors_mode(
     if not receptors:
         raise ValueError("At least one receptor is required in receptors[] for input.mode=simulation_receptors")
 
-    site_lons = np.array([float(r["lon"]) for r in receptors], dtype=float)
-    site_lats = np.array([float(r["lat"]) for r in receptors], dtype=float)
+    site_x = np.array([float(r["x_m"]) for r in receptors], dtype=float)
+    site_y = np.array([float(r["y_m"]) for r in receptors], dtype=float)
 
     with Dataset(sim_nc) as ds:
-        vname, lons, lats, cvar, n_sources, source_names = prepare_sim_transport(ds, variable_name_cfg)
+        vname, x, y, cvar, n_sources, source_names = prepare_sim_transport(ds, variable_name_cfg)
         n_time = infer_time_size(cvar)
         # One flux window per simulation timestep; observations share that base.
         n_flux = n_time
@@ -318,11 +388,11 @@ def build_from_receptors_mode(
 
         G = _time_resolved_G(
             cvar,
-            lons,
-            lats,
+            x,
+            y,
             n_sources=n_sources,
-            site_lons=site_lons,
-            site_lats=site_lats,
+            site_x=site_x,
+            site_y=site_y,
             level_index=level_index,
             n_time_kernel=n_time,
             n_time_obs=n_time_obs,
@@ -345,6 +415,7 @@ def build_from_instrument_mode(
     cfg: dict[str, Any],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], str, Path, dict[str, Any], int]:
     from netCDF4 import Dataset
+    from enforceflux.coordinates import frame_from_canonical
 
     input_cfg = cfg.get("input", {})
     sim_nc = Path(input_cfg.get("simulation_netcdf", "")).expanduser().resolve()
@@ -361,6 +432,10 @@ def build_from_instrument_mode(
     from flux_helpers import find_var
 
     with Dataset(inst_nc) as ds_i:
+        attrs = {name: ds_i.getncattr(name) for name in ds_i.ncattrs()}
+        if str(attrs.get("Conventions", "")) != "EnforceFlux-canonical-3":
+            raise ValueError("Instrument NetCDF must use EnforceFlux-canonical-3")
+        frame_from_canonical(attrs)
         y_name = find_var(ds_i, ("y_obs", "observation", "observations"))
         if y_name is None:
             raise KeyError("Instrument NetCDF must include y_obs/observation variable")
@@ -383,19 +458,19 @@ def build_from_instrument_mode(
             sigma_default = float(cfg.get("observations", {}).get("default_sigma", 1.0))
             se_grid = np.full_like(y_grid, sigma_default**2, dtype=float)
 
-        lon_name = find_var(ds_i, ("instrument_lon", "lon", "longitude"))
-        lat_name = find_var(ds_i, ("instrument_lat", "lat", "latitude"))
-        if lon_name is None or lat_name is None:
+        x_name = find_var(ds_i, ("instrument_x_m",))
+        y_name = find_var(ds_i, ("instrument_y_m",))
+        if x_name is None or y_name is None:
             raise KeyError(
-                "Instrument NetCDF must include instrument_lon and instrument_lat variables"
+                "Instrument NetCDF must include instrument_x_m and instrument_y_m variables"
             )
-        inst_lons = np.asarray(ds_i.variables[lon_name][:], dtype=float).reshape(-1)
-        inst_lats = np.asarray(ds_i.variables[lat_name][:], dtype=float).reshape(-1)
-        if len(inst_lons) != n_inst or len(inst_lats) != n_inst:
+        inst_x = np.asarray(ds_i.variables[x_name][:], dtype=float).reshape(-1)
+        inst_y = np.asarray(ds_i.variables[y_name][:], dtype=float).reshape(-1)
+        if len(inst_x) != n_inst or len(inst_y) != n_inst:
             raise ValueError("Instrument coordinate vectors must match instrument dimension length")
 
     with Dataset(sim_nc) as ds_s:
-        vname, lons, lats, cvar, n_sources, source_names = prepare_sim_transport(ds_s, variable_name_cfg)
+        vname, x, y, cvar, n_sources, source_names = prepare_sim_transport(ds_s, variable_name_cfg)
         n_time_s = infer_time_size(cvar)
         # Flux windows are set by the simulation's time base (kernel length);
         # observations may run longer — lags past the kernel contribute zero
@@ -404,11 +479,11 @@ def build_from_instrument_mode(
 
         G = _time_resolved_G(
             cvar,
-            lons,
-            lats,
+            x,
+            y,
             n_sources=n_sources,
-            site_lons=inst_lons,
-            site_lats=inst_lats,
+            site_x=inst_x,
+            site_y=inst_y,
             level_index=level_index,
             n_time_kernel=n_time_s,
             n_time_obs=n_time_i,

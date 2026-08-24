@@ -50,12 +50,12 @@ def _build_background_nuisance(bg_cfg, block, obs_meta, n_obs, input_mode):
             )
         receptors = block.get("receptors") or []
         if not receptors:
-            raise ValueError("gradient background requires receptors[] with lon/lat")
+            raise ValueError("gradient background requires receptors[] with x_m/y_m")
         n_time = int(obs_meta.get("n_time", n_obs // len(receptors)))
-        lons = np.array([float(r["lon"]) for r in receptors], dtype=float)
-        lats = np.array([float(r["lat"]) for r in receptors], dtype=float)
-        x_obs = np.repeat(lons, n_time)
-        y_obs = np.repeat(lats, n_time)
+        xs = np.array([float(r["x_m"]) for r in receptors], dtype=float)
+        ys = np.array([float(r["y_m"]) for r in receptors], dtype=float)
+        x_obs = np.repeat(xs, n_time)
+        y_obs = np.repeat(ys, n_time)
         if x_obs.size != n_obs:
             raise ValueError(
                 f"gradient background expected {n_obs} obs, receptors*time gave {x_obs.size}"

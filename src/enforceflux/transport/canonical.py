@@ -7,8 +7,7 @@ so anything downstream would otherwise branch per model. Each is converted here
 into one shape::
 
     concentration(time, y, x)   [ng m-3]
-    x(x), y(y)                  [m, local azimuthal-equidistant frame]
-    longitude(y, x), latitude(y, x)
+    x(x), y(y)                  [m east/north of the declared origin]
     timestamp(time)
 
 ``ng m-3`` is the common unit because it is FLEXPART's native output and both
@@ -37,12 +36,10 @@ KG_M3_TO_NG_M3 = 1.0e12
 class CanonicalField:
     """A concentration field in the canonical layout."""
 
-    x: np.ndarray  # (nx,) metres, local frame
-    y: np.ndarray  # (ny,) metres, local frame
+    x: np.ndarray  # (nx,) metres east of origin
+    y: np.ndarray  # (ny,) metres north of origin
     values: np.ndarray  # (time, ny, nx) in ng m-3
     timestamps: tuple[str, ...] = ()
-    longitude: np.ndarray | None = None  # (ny, nx)
-    latitude: np.ndarray | None = None  # (ny, nx)
     units: str = CANONICAL_UNITS
     meta: dict[str, Any] = field(default_factory=dict)
 
@@ -83,6 +80,11 @@ class CanonicalField:
 def write_canonical(field: CanonicalField, path: str | Path, *, compress: bool = True) -> Path:
     """Write a :class:`CanonicalField` to NetCDF and return the path."""
     from netCDF4 import Dataset
+    from enforceflux.coordinates import frame_from_canonical
+
+    # Canonical-v2 files have a mandatory, machine-readable coordinate frame.
+    # Constructing it here validates both the frame kind and required metadata.
+    frame_from_canonical(field.meta)
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,12 +97,12 @@ def write_canonical(field: CanonicalField, path: str | Path, *, compress: bool =
 
         var_x = ds.createVariable("x", "f8", ("x",))
         var_x.units = "m"
-        var_x.long_name = "easting in the local projection"
+        var_x.long_name = "metres east of frame origin"
         var_x[:] = field.x
 
         var_y = ds.createVariable("y", "f8", ("y",))
         var_y.units = "m"
-        var_y.long_name = "northing in the local projection"
+        var_y.long_name = "metres north of frame origin"
         var_y[:] = field.y
 
         var_t = ds.createVariable("time", "i4", ("time",))
@@ -113,14 +115,6 @@ def write_canonical(field: CanonicalField, path: str | Path, *, compress: bool =
             for i, stamp in enumerate(field.timestamps):
                 stamps[i] = stamp
 
-        if field.longitude is not None and field.latitude is not None:
-            lon = ds.createVariable("longitude", "f8", ("y", "x"))
-            lon.units = "degrees_east"
-            lon[:] = field.longitude
-            lat = ds.createVariable("latitude", "f8", ("y", "x"))
-            lat.units = "degrees_north"
-            lat[:] = field.latitude
-
         conc = ds.createVariable(
             "concentration",
             "f4",
@@ -130,10 +124,10 @@ def write_canonical(field: CanonicalField, path: str | Path, *, compress: bool =
         )
         conc.units = field.units
         conc.long_name = "CH4 concentration"
-        conc.coordinates = "longitude latitude"
+        conc.coordinates = "x y"
         conc[:] = field.values
 
-        ds.Conventions = "EnforceFlux-canonical-1"
+        ds.Conventions = "EnforceFlux-canonical-3"
         for key, value in field.meta.items():
             setattr(ds, str(key), value if isinstance(value, (int, float, str)) else str(value))
 
@@ -143,8 +137,17 @@ def write_canonical(field: CanonicalField, path: str | Path, *, compress: bool =
 def read_canonical(path: str | Path) -> CanonicalField:
     """Read a canonical NetCDF back into a :class:`CanonicalField`."""
     from netCDF4 import Dataset
+    from enforceflux.coordinates import frame_from_canonical
 
     with Dataset(Path(path)) as ds:
+        conventions = str(getattr(ds, "Conventions", ""))
+        if conventions != "EnforceFlux-canonical-3":
+            raise ValueError(
+                f"Unsupported canonical convention {conventions!r}; regenerate "
+                "the field in the east/north v3 contract"
+            )
+        attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
+        frame_from_canonical(attrs)
         timestamps = (
             tuple(str(s) for s in ds.variables["timestamp"][:])
             if "timestamp" in ds.variables
@@ -155,27 +158,27 @@ def read_canonical(path: str | Path) -> CanonicalField:
             y=np.array(ds.variables["y"][:]),
             values=np.array(ds.variables["concentration"][:]),
             timestamps=timestamps,
-            longitude=(
-                np.array(ds.variables["longitude"][:]) if "longitude" in ds.variables else None
-            ),
-            latitude=(
-                np.array(ds.variables["latitude"][:]) if "latitude" in ds.variables else None
-            ),
             units=getattr(ds.variables["concentration"], "units", CANONICAL_UNITS),
-            meta={k: ds.getncattr(k) for k in ds.ncattrs()},
+            meta=attrs,
         )
 
 
 # ── Per-model conversion ─────────────────────────────────────────────────────
 
 
-def _lonlat_grid(projection, x: np.ndarray, y: np.ndarray):
-    """2-D longitude/latitude for a metric grid, or ``(None, None)`` without a projection."""
+def _east_north_frame_meta(projection) -> dict[str, Any]:
+    """Explicit frame metadata for canonical east/north grids."""
     if projection is None:
-        return None, None
-    grid_x, grid_y = np.meshgrid(x, y)
-    lon, lat = projection.to_lonlat(grid_x, grid_y)
-    return np.asarray(lon), np.asarray(lat)
+        raise ValueError("Canonical output requires the domain origin projection")
+    lon = getattr(projection, "centre_lon", None)
+    lat = getattr(projection, "centre_lat", None)
+    if lon is None or lat is None:
+        return {}
+    return {
+        "coordinate_frame": "east_north",
+        "frame_center_lon": float(lon),
+        "frame_center_lat": float(lat),
+    }
 
 
 def from_aermod(
@@ -195,15 +198,15 @@ def from_aermod(
             f"Canonicalising AERMOD output needs ng m-3; the field is in "
             f"{grid_field.units!r}. Run with concentration_units='ng_m3_per_kg_s'."
         )
-    lon, lat = _lonlat_grid(projection, grid_field.x, grid_field.y)
     return CanonicalField(
         x=np.asarray(grid_field.x, dtype=float),
         y=np.asarray(grid_field.y, dtype=float),
         values=np.asarray(grid_field.values, dtype=float),
         timestamps=tuple(str(t) for t in timestamps if t is not None),
-        longitude=lon,
-        latitude=lat,
-        meta={"model": "aermod", "receptor_height_m": grid_field.z, **(meta or {})},
+        meta={
+            "model": "aermod", "receptor_height_m": grid_field.z,
+            **_east_north_frame_meta(projection), **(meta or {}),
+        },
     )
 
 
@@ -262,27 +265,24 @@ def from_flexpart_netcdf(
             "conversion."
         )
 
-    if projection is not None:
-        centre_lon = float(np.mean(longitude))
-        centre_lat = float(np.mean(latitude))
-        x, _ = projection.to_xy(longitude, np.full_like(longitude, centre_lat))
-        _, y = projection.to_xy(np.full_like(latitude, centre_lon), latitude)
-        x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
-    else:
-        x, y = longitude, latitude
+    if projection is None:
+        raise ValueError("Canonicalising FLEXPART requires the domain origin projection")
+    centre_lon = float(projection.centre_lon)
+    centre_lat = float(projection.centre_lat)
+    x, _ = projection.to_xy(longitude, np.full_like(longitude, centre_lat))
+    _, y = projection.to_xy(np.full_like(latitude, centre_lon), latitude)
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
 
-    grid_lon, grid_lat = np.meshgrid(longitude, latitude)
     return CanonicalField(
         x=x,
         y=y,
         values=np.asarray(data, dtype=float),
-        longitude=grid_lon,
-        latitude=grid_lat,
         meta={
             "model": "flexpart",
             "source_variable": variable,
             "height_index": height_index,
             "release_reduction": release_reduction,
+            **_east_north_frame_meta(projection),
             **(meta or {}),
         },
     )
@@ -299,12 +299,12 @@ def from_microhh(
 
     MicroHH writes each cross-section as a raw ``(jtot, itot)`` binary per output
     time, carrying a mass mixing ratio [kg/kg]; those are stacked into the time
-    axis and converted to ng m-3. Coordinates are the LES box's own metric axes,
-    with longitude/latitude from the case's wind-aligned box projection.
+    axis and converted to ng m-3. The generated MicroHH box is east/north, so
+    subtracting the native origin offset produces the public coordinates
+    directly without interpolation.
     """
     import glob
 
-    from enforceflux.microhh.geometry import BoxProjection
     from enforceflux.microhh.units import mixing_ratio_to_mass_conc
 
     name = variable or microhh_config.scalar_name
@@ -326,15 +326,11 @@ def from_microhh(
     x = (np.arange(grid.itot) + 0.5) * grid.dx - microhh_config.source_x0
     y = (np.arange(grid.jtot) + 0.5) * grid.dy - microhh_config.source_y0
 
-    projection = BoxProjection(
-        microhh_config.origin_lon,
-        microhh_config.origin_lat,
-        microhh_config.x_bearing_deg,
-        microhh_config.source_x0,
-        microhh_config.source_y0,
-    )
-    grid_x, grid_y = np.meshgrid(x + microhh_config.source_x0, y + microhh_config.source_y0)
-    lon, lat = projection.to_lonlat(grid_x, grid_y)
+    if not np.isclose(float(microhh_config.x_bearing_deg), 90.0):
+        raise ValueError(
+            "MicroHH canonical output requires an east/north native box "
+            "(domain.x_bearing_deg=90); regenerate this run"
+        )
 
     timestamps = tuple(Path(f).name.rsplit(".", 1)[-1] for f in files)
     return CanonicalField(
@@ -342,12 +338,13 @@ def from_microhh(
         y=y,
         values=values,
         timestamps=timestamps,
-        longitude=lon,
-        latitude=lat,
         meta={
             "model": "microhh",
             "level_index": level,
             "case_name": microhh_config.case_name,
+            "coordinate_frame": "east_north",
+            "frame_center_lon": float(microhh_config.origin_lon),
+            "frame_center_lat": float(microhh_config.origin_lat),
             **(meta or {}),
         },
     )

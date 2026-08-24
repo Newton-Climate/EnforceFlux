@@ -53,7 +53,7 @@ def test_flexpart_sweep_smoke(tmp_path: Path) -> None:
     cfg = {
         "dispersion": {
             "transport": {"model": "flexpart", "mode": "operator"},
-            "domain": {"origin_lon": 7.5, "origin_lat": 51.5, "spacing_m": 500.0},
+            "domain": {"center_lon": 7.5, "center_lat": 51.5, "spacing_m": 500.0},
             "receptors": [
                 {"id": "r0", "x_m": 0.0, "y_m": 0.0, "alt_m": 3.0},
                 {"id": "r1", "x_m": 500.0, "y_m": 0.0, "alt_m": 3.0},

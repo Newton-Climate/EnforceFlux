@@ -50,8 +50,8 @@ dispersion:
          surface_roughness_m: 0.1}
 
   domain:
-    origin_lon: -121.75
-    origin_lat: 39.15
+    center_lon: -121.75
+    center_lat: 39.15
     # 1.92 x 0.96 km at 4 m spacing => 480 x 240 cells.
     x_min: -960.0
     x_max:  960.0

@@ -1,7 +1,7 @@
 """MicroHHConfig dataclass and YAML loader for MicroHH LES cases.
 
 The counterpart to :mod:`enforceflux.flexpart.sim_config`. One YAML fully
-describes a MicroHH case: the box grid, the wind-aligned projection, the
+describes a native MicroHH case: the box grid, its private projection, the
 large-scale forcing, the scalar sources, and the column receptors. The loader
 resolves relative paths against the YAML file's directory (same contract as the
 FLEXPART loader).
@@ -27,8 +27,8 @@ class SurfaceFluxPatch:
     actually measures.
 
     The square is axis-aligned in GEOGRAPHIC metres (east/north of the domain
-    origin), so in the wind-aligned LES box it appears rotated. Rasterising
-    handles that; do not pre-rotate it.
+    origin). A native box may rotate internally; the shared transport adapter
+    fixes it to east/north. Rasterising handles either case; do not pre-rotate.
     """
 
     id: str
@@ -223,7 +223,7 @@ class MicroHHConfig:
     grid: BoxGrid
     forcing: Forcing
 
-    # Wind-aligned box projection.
+    # Private native-box projection. Shared transport runs fix this to ENU.
     origin_lon: float
     origin_lat: float
     x_bearing_deg: float
@@ -251,6 +251,15 @@ class MicroHHConfig:
     column_sampletime_s: float | None = None
 
     scalar_name: str = "ch4"
+
+    # H2O passive scalar. When enabled, MicroHH transports a second tracer
+    # named ``h2o_name`` with an exponentially decaying tropospheric profile.
+    # Required for realistic sonic/OP-FTIR pseudo-instruments that need water
+    # vapour (e.g. for WPL corrections or mixing-ratio conversions).
+    include_h2o: bool = True
+    h2o_name: str = "h2o"
+    h2o_surface_kg_kg: float = 0.008        # ~8 g/kg near-surface specific humidity
+    h2o_scale_height_m: float = 2000.0      # e-folding scale for q(z)
     # Multiplier on each source's physical emission_rate_kg_s when writing the
     # MicroHH strength. 1.0 → physically calibrated run (kg/s). Set to a
     # reference value only for unit-response (Jacobian) runs; the scalar is
@@ -396,6 +405,10 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
         ),
         scalar_name=str(spec.get("name", "ch4")),
         emission_scale=float(spec.get("emission_scale", 1.0)),
+        include_h2o=bool(spec.get("include_h2o", True)),
+        h2o_name=str(spec.get("h2o_name", "h2o")),
+        h2o_surface_kg_kg=float(spec.get("h2o_surface_kg_kg", 0.008)),
+        h2o_scale_height_m=float(spec.get("h2o_scale_height_m", 2000.0)),
         num_workers=int(mh.get("num_workers", 1)),
         cross_xy_m=(float(cross["xy_m"]) if "xy_m" in cross else None),
         cross_xz_m=(float(cross["xz_m"]) if "xz_m" in cross else None),

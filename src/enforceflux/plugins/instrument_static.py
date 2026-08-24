@@ -27,7 +27,7 @@ class StaticInstrumentModel(IInstrumentModel):
         instruments_blob = config.get("instruments", [])
         instruments: list[Instrument] = []
         for item in instruments_blob:
-            _require_keys(item, ["id", "x", "y"], "instrument")
+            _require_keys(item, ["id", "x_m", "y_m"], "instrument")
 
             # Prefer explicit tech_id; fall back to legacy "kind" mapping
             if "tech_id" in item:
@@ -45,8 +45,8 @@ class StaticInstrumentModel(IInstrumentModel):
                 Instrument(
                     id=str(item["id"]),
                     tech_id=tech_id,
-                    x=float(item["x"]),
-                    y=float(item["y"]),
+                    x=float(item["x_m"]),
+                    y=float(item["y_m"]),
                     z=float(item.get("z", item.get("alt", 0.0))),
                     mode=str(item.get("mode", "good")),
                     path_length_m=float(item.get("path_length_m", 200.0)),

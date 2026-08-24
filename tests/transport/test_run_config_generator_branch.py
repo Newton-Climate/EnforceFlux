@@ -5,8 +5,8 @@ from enforceflux.transport.run_config import RunSource, TransportRunConfig
 
 
 BASE_DOMAIN = {
-    "origin_lon": -121.75,
-    "origin_lat": 39.15,
+    "center_lon": -121.75,
+    "center_lat": 39.15,
     "x_min": -400.0, "x_max": 400.0,
     "y_min": -400.0, "y_max": 400.0,
     "spacing_m": 100.0,

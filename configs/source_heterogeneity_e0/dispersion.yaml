@@ -53,8 +53,8 @@ dispersion:
          friction_velocity_m_s: 0.25, sensible_heat_flux_w_m2:   30.0}
 
   domain:
-    origin_lon: -121.75
-    origin_lat: 39.15
+    center_lon: -121.75
+    center_lat: 39.15
     x_min: -800.0
     x_max:  800.0
     y_min: -800.0

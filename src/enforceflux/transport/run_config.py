@@ -15,7 +15,7 @@ count, an LES box. Those blocks may never restate a shared key: sources and
 meteorology cannot silently diverge between models, which is the entire point
 of running them from one file.
 
-Geometry follows one contract: **``domain.origin_lon``/``origin_lat`` are the
+Geometry follows one contract: **``domain.center_lon``/``center_lat`` are the
 only geographic coordinates in the file.** The domain extent, every source and
 every receptor are Cartesian metres east/north of that origin. The lon/lat
 bounds FLEXPART needs are *derived* from the origin and the extent
@@ -33,10 +33,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
-MODELS = ("aermod", "flexpart", "microhh")
+MODELS = ("aermod", "flexpart", "microhh", "blsmodelr")
 MODES = ("simulation", "operator")
 
-Model = Literal["aermod", "flexpart", "microhh"]
+Model = Literal["aermod", "flexpart", "microhh", "blsmodelr"]
 Mode = Literal["simulation", "operator"]
 
 
@@ -59,7 +59,7 @@ def _reject_geographic(blob: dict[str, Any], context: str) -> None:
     if geographic:
         raise ValueError(
             f"{context} uses geographic key(s) {geographic}. Only "
-            "domain.origin_lon/origin_lat are given in lon/lat; every other "
+            "domain.center_lon/center_lat are given in lon/lat; every other "
             "position is Cartesian metres east/north of that origin. Use "
             "x_m/y_m (and alt_m for height)."
         )
@@ -127,7 +127,7 @@ class RunReceptor:
 class RunDomain:
     """The domain: one geographic origin, everything else Cartesian metres.
 
-    ``origin_lon``/``origin_lat`` are the **only** geographic coordinates in a
+    ``center_lon``/``center_lat`` are the **only** geographic coordinates in a
     run config. The extent is given in metres east/north of that origin, and
     the geographic bounds the lon/lat-gridded models need are *derived* from it
     (:attr:`lon_min` and friends) rather than declared, so the two can never
@@ -214,21 +214,27 @@ class RunDomain:
 
     @classmethod
     def from_dict(cls, blob: dict[str, Any]) -> "RunDomain":
+        old_anchor = sorted({"origin_lon", "origin_lat"} & set(blob))
+        if old_anchor:
+            raise ValueError(
+                f"domain uses retired anchor key(s) {old_anchor}; use "
+                "center_lon/center_lat"
+            )
         legacy = sorted({"lon_min", "lat_min", "lon_max", "lat_max"} & set(blob))
         if legacy:
             raise ValueError(
                 f"domain declares geographic bounds {legacy}. These are now derived: "
-                "give domain.origin_lon/origin_lat plus the Cartesian extent "
+                "give domain.center_lon/center_lat plus the Cartesian extent "
                 "x_min/x_max/y_min/y_max in metres east/north of that origin."
             )
         _require(
             blob,
-            ["origin_lon", "origin_lat", "x_min", "x_max", "y_min", "y_max"],
+            ["center_lon", "center_lat", "x_min", "x_max", "y_min", "y_max"],
             "domain",
         )
         return cls(
-            origin_lon=float(blob["origin_lon"]),
-            origin_lat=float(blob["origin_lat"]),
+            origin_lon=float(blob["center_lon"]),
+            origin_lat=float(blob["center_lat"]),
             x_min=float(blob["x_min"]),
             x_max=float(blob["x_max"]),
             y_min=float(blob["y_min"]),

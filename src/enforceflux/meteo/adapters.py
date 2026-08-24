@@ -108,11 +108,11 @@ def to_microhh_forcing(
 ) -> "Forcing":
     """Canonical met → a MicroHH :class:`Forcing` block.
 
-    MicroHH runs in a wind-aligned box, so the wind is rotated into box
-    coordinates: with ``x_bearing_deg`` equal to the bearing of the box's +x
-    axis, ``u_geo`` is the along-box component and ``v_geo`` the cross-box one.
-    Pass the case's own ``x_bearing_deg`` to keep them consistent; omit it to
-    align the box with the mean wind (``v_geo = 0``).
+    Wind is rotated into the native box coordinates: with ``x_bearing_deg``
+    equal to the bearing of the box's +x axis, ``u_geo`` is the along-box
+    component and ``v_geo`` the cross-box one. The shared transport adapter
+    passes 90 degrees, making these eastward and northward components. Omitting
+    it remains useful for standalone native cases that align +x with mean wind.
 
     ``inversion_strength_K`` and ``inversion_depth_m`` have no ERA5 counterpart
     and stay at their defaults — they describe the capping inversion's

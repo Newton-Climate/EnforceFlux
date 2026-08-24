@@ -35,6 +35,32 @@ class ReceptorSeries:
     values: np.ndarray           # (t, n_receptors) scalar mixing ratio
 
 
+@dataclass(frozen=True)
+class LesColumnData:
+    """Full atmospheric state at one MicroHH column, all fields on the same
+    (time, z) grid.
+
+    Native to the MicroHH column NetCDF: ``times_s``, ``z``, ``u``, ``v``,
+    ``w``, ``theta``, ``ch4``, ``h2o`` (when the case includes H2O).
+    Derived from the anelastic base state via
+    :mod:`enforceflux.microhh.thermo`: ``pressure`` (shape ``(nz,)``) and
+    ``temperature`` (shape ``(nt, nz)``).
+    """
+
+    ix: int
+    iy: int
+    times_s: np.ndarray            # (nt,)
+    z: np.ndarray                  # (nz,)
+    u: np.ndarray                  # (nt, nz)
+    v: np.ndarray                  # (nt, nz)
+    w: np.ndarray                  # (nt, nz)
+    theta: np.ndarray              # (nt, nz)
+    pressure: np.ndarray           # (nz,)   base-state hydrostatic
+    temperature: np.ndarray        # (nt, nz)  T = θ (p/p0)^κ
+    ch4: np.ndarray                # (nt, nz)
+    h2o: np.ndarray | None         # (nt, nz) or None when include_h2o=False
+
+
 def _proj(cfg: MicroHHConfig) -> BoxProjection:
     return BoxProjection(
         origin_lon=cfg.origin_lon, origin_lat=cfg.origin_lat,
@@ -102,6 +128,77 @@ def read_receptor_series(cfg: MicroHHConfig, sample_level: int = 0) -> ReceptorS
         receptor_ids=tuple(ids),
         times_s=times if times is not None else np.empty(0),
         values=np.stack(series, axis=1) if series else np.empty((0, 0)),
+    )
+
+
+def read_column_full(cfg: MicroHHConfig, ix: int, iy: int) -> LesColumnData:
+    """Read the full atmospheric state at one MicroHH column.
+
+    Loads u, v, w, θ, CH4, and (if configured) H2O from the column NetCDF at
+    grid index ``(ix, iy)``, then reconstructs the anelastic base-state
+    pressure profile from the case's initial θ (see
+    :func:`enforceflux.microhh.thermo.base_state_pressure`) and derives
+    absolute temperature T = θ (p/p0)^κ on the (nt, nz) grid.
+
+    Returns
+    -------
+    LesColumnData
+        Everything a sonic / OP-FTIR pseudo-instrument at this column needs.
+    """
+    try:
+        import xarray as xr
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError(
+            "Reading MicroHH output needs the 'analysis' extra (xarray/netCDF4): "
+            "pip install enforceflux[analysis]"
+        ) from exc
+
+    from enforceflux.microhh.case import initial_profiles
+    from enforceflux.microhh.thermo import base_state_pressure, temperature_from_theta
+
+    path = find_column_file(cfg, ix, iy)
+    if path is None:
+        raise FileNotFoundError(
+            f"No column file at grid index ({ix:05d},{iy:05d}) in "
+            f"{cfg.case_dir}. Run the case first."
+        )
+    ds = xr.open_dataset(path, decode_times=False)
+    try:
+        times_s = np.asarray(ds["time"].values, dtype=float)
+        z = np.asarray(ds["z"].values, dtype=float)
+        u = np.asarray(ds["u"].values, dtype=float)
+        v = np.asarray(ds["v"].values, dtype=float)
+        # MicroHH stores w on half-levels ("zh"); if that variable exists,
+        # interpolate to full levels so w shares (nt, nz) with u/v.
+        if "w" in ds.variables and ds["w"].shape == u.shape:
+            w = np.asarray(ds["w"].values, dtype=float)
+        elif "w" in ds.variables:
+            wh = np.asarray(ds["w"].values, dtype=float)  # (nt, nzh)
+            w = 0.5 * (wh[:, :-1] + wh[:, 1:]) if wh.shape[1] == z.size + 1 else wh
+        else:
+            w = np.zeros_like(u)
+        theta = np.asarray(ds["th"].values, dtype=float)
+        ch4 = np.asarray(ds[cfg.scalar_name].values, dtype=float)
+        h2o = (np.asarray(ds[cfg.h2o_name].values, dtype=float)
+               if cfg.include_h2o and cfg.h2o_name in ds.variables else None)
+    finally:
+        ds.close()
+
+    # Base-state pressure from the case's initial θ profile. MicroHH's
+    # anelastic base state is fixed at t=0, so this is exact.
+    prof = initial_profiles(cfg)
+    p = base_state_pressure(prof["z"], prof["th"], p_bot=1.0e5)
+    if prof["z"].shape == z.shape and np.allclose(prof["z"], z):
+        p_col = p
+    else:
+        p_col = np.interp(z, prof["z"], p)
+    T = temperature_from_theta(theta, p_col)
+
+    return LesColumnData(
+        ix=ix, iy=iy, times_s=times_s, z=z,
+        u=u, v=v, w=w, theta=theta,
+        pressure=p_col, temperature=T,
+        ch4=ch4, h2o=h2o,
     )
 
 
