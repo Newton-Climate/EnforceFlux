@@ -19,24 +19,25 @@ def find_var(ds, candidates: tuple[str, ...]) -> str | None:
     return None
 
 
-def sample_nearest(field_2d: np.ndarray, lons: np.ndarray, lats: np.ndarray, lon: float, lat: float) -> float:
-    """Nearest-grid sample. Handles 1-D (FLEXPART) or 2-D (canonical) coords."""
-    lons = np.asarray(lons)
-    lats = np.asarray(lats)
-    if lons.ndim == 2 and lats.ndim == 2 and lons.shape == lats.shape == field_2d.shape:
-        d2 = (lons - lon) ** 2 + (lats - lat) ** 2
+def sample_nearest(field_2d: np.ndarray, x: np.ndarray, y: np.ndarray,
+                   site_x: float, site_y: float) -> float:
+    """Nearest-grid sample in canonical east/north metres."""
+    x = np.asarray(x)
+    y = np.asarray(y)
+    if x.ndim == 2 and y.ndim == 2 and x.shape == y.shape == field_2d.shape:
+        d2 = (x - site_x) ** 2 + (y - site_y) ** 2
         iy, ix = np.unravel_index(int(np.argmin(d2)), field_2d.shape)
         return float(field_2d[iy, ix])
-    if lons.ndim == 1 and lats.ndim == 1:
-        iy = int(np.argmin(np.abs(lats - lat)))
-        ix = int(np.argmin(np.abs(lons - lon)))
-        if field_2d.shape == (len(lats), len(lons)):
+    if x.ndim == 1 and y.ndim == 1:
+        iy = int(np.argmin(np.abs(y - site_y)))
+        ix = int(np.argmin(np.abs(x - site_x)))
+        if field_2d.shape == (len(y), len(x)):
             return float(field_2d[iy, ix])
-        if field_2d.shape == (len(lons), len(lats)):
+        if field_2d.shape == (len(x), len(y)):
             return float(field_2d[ix, iy])
     raise ValueError(
-        "Unable to map concentration field to lat/lon axes. "
-        f"Field shape={field_2d.shape}, lat shape={lats.shape}, lon shape={lons.shape}"
+        "Unable to map concentration field to x/y axes. "
+        f"Field shape={field_2d.shape}, y shape={y.shape}, x shape={x.shape}"
     )
 
 
@@ -60,8 +61,7 @@ def extract_field_for_release(
 
     idx: list[object] = []
     for d in dims:
-        # Canonical dims: y, x. FLEXPART native: latitude, longitude.
-        if d in ("latitude", "lat", "ylat", "y", "longitude", "lon", "xlon", "x"):
+        if d in ("y", "x"):
             idx.append(slice(None))
         elif d in ("time", "times"):
             idx.append(time_index)
@@ -96,16 +96,16 @@ def infer_time_size(var) -> int:
 
 def sample_step_response(
     cvar,
-    lons: np.ndarray,
-    lats: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
     *,
     release_index: int,
     level_index: int,
-    lon: float,
-    lat: float,
+    site_x: float,
+    site_y: float,
     n_time: int,
 ) -> np.ndarray:
-    """Concentration time series at ``(lon, lat)`` for one source release.
+    """Concentration time series at ``(site_x, site_y)`` for one source release.
 
     The simulation runs each source at a *sustained* unit emission rate, so the
     per-timestep concentration at a fixed point is the transport **step
@@ -120,7 +120,7 @@ def sample_step_response(
             time_index=t,
             level_index=level_index,
         )
-        s[t] = sample_nearest(field, lons, lats, lon, lat)
+        s[t] = sample_nearest(field, x, y, site_x, site_y)
     return s
 
 
@@ -199,13 +199,10 @@ def prepare_sim_transport(ds, variable_name_cfg: str | None):
     if vname is None:
         raise KeyError("No concentration variable found. Set input.variable_name in YAML.")
 
-    lon_name = find_var(ds, ("longitude", "lon", "xlon"))
-    lat_name = find_var(ds, ("latitude", "lat", "ylat"))
-    if lon_name is None or lat_name is None:
-        raise KeyError("Simulation NetCDF must include longitude and latitude variables")
-
-    lons = np.asarray(ds.variables[lon_name][:], dtype=float)
-    lats = np.asarray(ds.variables[lat_name][:], dtype=float)
+    if "x" not in ds.variables or "y" not in ds.variables:
+        raise KeyError("Simulation NetCDF must include canonical x and y variables")
+    x = np.asarray(ds.variables["x"][:], dtype=float)
+    y = np.asarray(ds.variables["y"][:], dtype=float)
     cvar = ds.variables[vname]
     n_sources = infer_n_sources(cvar)
 
@@ -220,7 +217,7 @@ def prepare_sim_transport(ds, variable_name_cfg: str | None):
         )
 
     source_names = parse_source_names(ds, n_sources)
-    return vname, lons, lats, cvar, n_sources, source_names
+    return vname, x, y, cvar, n_sources, source_names
 
 
 def _receptor_time_series(value, n_time_obs: int, what: str) -> np.ndarray:

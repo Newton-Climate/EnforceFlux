@@ -20,12 +20,12 @@ from enforceflux.source_fields.prior import build_prior_covariance
 
 def _time_resolved_G(
     cvar,
-    lons: np.ndarray,
-    lats: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
     *,
     n_sources: int,
-    site_lons: np.ndarray,
-    site_lats: np.ndarray,
+    site_x: np.ndarray,
+    site_y: np.ndarray,
     level_index: int,
     n_time_kernel: int,
     n_time_obs: int,
@@ -41,18 +41,18 @@ def _time_resolved_G(
     ``n_sources * n_flux``) to the flat observation vector (receptor-major,
     time-minor; length ``n_sites * n_time_obs``).
     """
-    n_sites = len(site_lons)
+    n_sites = len(site_x)
     G = np.zeros((n_sites * n_time_obs, n_sources * n_flux), dtype=float)
     for j in range(n_sources):
         for i in range(n_sites):
             step = sample_step_response(
                 cvar,
-                lons,
-                lats,
+                x,
+                y,
                 release_index=j,
                 level_index=level_index,
-                lon=float(site_lons[i]),
-                lat=float(site_lats[i]),
+                site_x=float(site_x[i]),
+                site_y=float(site_y[i]),
                 n_time=n_time_kernel,
             )
             impulse = step_to_impulse(step)
@@ -306,11 +306,11 @@ def build_from_receptors_mode(
     if not receptors:
         raise ValueError("At least one receptor is required in receptors[] for input.mode=simulation_receptors")
 
-    site_lons = np.array([float(r["lon"]) for r in receptors], dtype=float)
-    site_lats = np.array([float(r["lat"]) for r in receptors], dtype=float)
+    site_x = np.array([float(r["x_m"]) for r in receptors], dtype=float)
+    site_y = np.array([float(r["y_m"]) for r in receptors], dtype=float)
 
     with Dataset(sim_nc) as ds:
-        vname, lons, lats, cvar, n_sources, source_names = prepare_sim_transport(ds, variable_name_cfg)
+        vname, x, y, cvar, n_sources, source_names = prepare_sim_transport(ds, variable_name_cfg)
         n_time = infer_time_size(cvar)
         # One flux window per simulation timestep; observations share that base.
         n_flux = n_time
@@ -318,11 +318,11 @@ def build_from_receptors_mode(
 
         G = _time_resolved_G(
             cvar,
-            lons,
-            lats,
+            x,
+            y,
             n_sources=n_sources,
-            site_lons=site_lons,
-            site_lats=site_lats,
+            site_x=site_x,
+            site_y=site_y,
             level_index=level_index,
             n_time_kernel=n_time,
             n_time_obs=n_time_obs,
@@ -345,6 +345,7 @@ def build_from_instrument_mode(
     cfg: dict[str, Any],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], str, Path, dict[str, Any], int]:
     from netCDF4 import Dataset
+    from enforceflux.coordinates import frame_from_canonical
 
     input_cfg = cfg.get("input", {})
     sim_nc = Path(input_cfg.get("simulation_netcdf", "")).expanduser().resolve()
@@ -361,6 +362,10 @@ def build_from_instrument_mode(
     from flux_helpers import find_var
 
     with Dataset(inst_nc) as ds_i:
+        attrs = {name: ds_i.getncattr(name) for name in ds_i.ncattrs()}
+        if str(attrs.get("Conventions", "")) != "EnforceFlux-canonical-3":
+            raise ValueError("Instrument NetCDF must use EnforceFlux-canonical-3")
+        frame_from_canonical(attrs)
         y_name = find_var(ds_i, ("y_obs", "observation", "observations"))
         if y_name is None:
             raise KeyError("Instrument NetCDF must include y_obs/observation variable")
@@ -383,19 +388,19 @@ def build_from_instrument_mode(
             sigma_default = float(cfg.get("observations", {}).get("default_sigma", 1.0))
             se_grid = np.full_like(y_grid, sigma_default**2, dtype=float)
 
-        lon_name = find_var(ds_i, ("instrument_lon", "lon", "longitude"))
-        lat_name = find_var(ds_i, ("instrument_lat", "lat", "latitude"))
-        if lon_name is None or lat_name is None:
+        x_name = find_var(ds_i, ("instrument_x_m",))
+        y_name = find_var(ds_i, ("instrument_y_m",))
+        if x_name is None or y_name is None:
             raise KeyError(
-                "Instrument NetCDF must include instrument_lon and instrument_lat variables"
+                "Instrument NetCDF must include instrument_x_m and instrument_y_m variables"
             )
-        inst_lons = np.asarray(ds_i.variables[lon_name][:], dtype=float).reshape(-1)
-        inst_lats = np.asarray(ds_i.variables[lat_name][:], dtype=float).reshape(-1)
-        if len(inst_lons) != n_inst or len(inst_lats) != n_inst:
+        inst_x = np.asarray(ds_i.variables[x_name][:], dtype=float).reshape(-1)
+        inst_y = np.asarray(ds_i.variables[y_name][:], dtype=float).reshape(-1)
+        if len(inst_x) != n_inst or len(inst_y) != n_inst:
             raise ValueError("Instrument coordinate vectors must match instrument dimension length")
 
     with Dataset(sim_nc) as ds_s:
-        vname, lons, lats, cvar, n_sources, source_names = prepare_sim_transport(ds_s, variable_name_cfg)
+        vname, x, y, cvar, n_sources, source_names = prepare_sim_transport(ds_s, variable_name_cfg)
         n_time_s = infer_time_size(cvar)
         # Flux windows are set by the simulation's time base (kernel length);
         # observations may run longer — lags past the kernel contribute zero
@@ -404,11 +409,11 @@ def build_from_instrument_mode(
 
         G = _time_resolved_G(
             cvar,
-            lons,
-            lats,
+            x,
+            y,
             n_sources=n_sources,
-            site_lons=inst_lons,
-            site_lats=inst_lats,
+            site_x=inst_x,
+            site_y=inst_y,
             level_index=level_index,
             n_time_kernel=n_time_s,
             n_time_obs=n_time_i,

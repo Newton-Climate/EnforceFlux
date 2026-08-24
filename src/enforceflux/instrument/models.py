@@ -19,8 +19,8 @@ class Instrument:
 
     id: str
     tech_id: str   # key into INSTRUMENT_DB, e.g. "LP_ESN", "OP", "EC"
-    x: float       # domain x-coordinate (m or °lon when CRS is WGS-84)
-    y: float       # domain y-coordinate (m or °lat when CRS is WGS-84)
+    x: float       # metres east of the run origin
+    y: float       # metres north of the run origin
     z: float = 0.0
     mode: OperatingMode = "good"
 
