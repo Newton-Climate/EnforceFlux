@@ -108,6 +108,7 @@ def build_tagged_case(
     case_name: str | None = None,
     reference_kinematic_flux: float | None = None,
     keep_xz_cross: bool = False,
+    positivity_limiter: bool = True,
 ) -> TaggedCase:
     """Write a case emitting one tracer per active cell of the template's BC.
 
@@ -162,6 +163,14 @@ def build_tagged_case(
     text = (out_dir / f"{name}.ini").read_text()
     for key in _SCALAR_LIST_KEYS:
         text = _set_ini_key(text, key, joined)
+    if not positivity_limiter:
+        # The `[limiter]` clip is the dominant departure from superposition: it
+        # floors every tracer independently, so n tracers raise the far-field
+        # floor n-fold and bias the sum upward. Emptying `limitlist` removes it
+        # while leaving `fluxlimit_list` — and therefore the ghost-cell layout
+        # (advec_2i5.cxx:44) and restart compatibility — untouched. The cost is
+        # small negative undershoots in the far field.
+        text = _set_ini_key(text, "limitlist", "")
     # Cross-sections are the operator's output: one xy plane per tracer. The
     # template's `ch4_path` column integral would double the file count for no
     # gain, so drop it.

@@ -203,3 +203,19 @@ def test_unrun_case_is_reported_clearly(tmp_path):
     case = build_tagged_case(_template(tmp_path, _two_cell_field()), tmp_path / "op")
     with pytest.raises(FileNotFoundError, match="must be run first"):
         read_operator(case, level_index=LEVEL)
+
+
+def test_positivity_limiter_can_be_disabled(tmp_path):
+    """The clip is the dominant nonlinearity; dropping it must not disturb
+    `fluxlimit_list`, which sets the ghost-cell count and so the restart
+    layout."""
+    template = _template(tmp_path, _two_cell_field())
+    on = build_tagged_case(template, tmp_path / "on")
+    off = build_tagged_case(template, tmp_path / "off", positivity_limiter=False)
+
+    joined = ",".join(on.tracers)
+    assert read_ini(on.case_dir / "transport_run.ini")["limitlist"] == joined
+    assert read_ini(off.case_dir / "transport_run.ini")["limitlist"] == ""
+    # The advection flux limiter, and thus kgc, is unchanged either way.
+    for case in (on, off):
+        assert read_ini(case.case_dir / "transport_run.ini")["fluxlimit_list"] == joined
