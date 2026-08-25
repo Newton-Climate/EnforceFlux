@@ -373,6 +373,13 @@ def write_microhh_config(
             # MPI ranks. Decomposed into (npx,npy) against the grid when the
             # case loads, so an invalid count is rejected there, not mid-run.
             "num_workers": int(options.get("num_workers", 1)),
+            # A precomputed tagged-tracer operator: write the case, then
+            # evaluate it as H @ e rather than integrating it.
+            **(
+                {"operator_npz": str(run.resolve(options["operator_npz"]))}
+                if options.get("operator_npz")
+                else {}
+            ),
             **(
                 {
                     "restart_from": {

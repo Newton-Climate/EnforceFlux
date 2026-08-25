@@ -281,6 +281,14 @@ class MicroHHConfig:
     restart_from_dir: Path | None = None
     restart_time_s: int | None = None
 
+    # Precomputed tagged-tracer transport operator (``operator.npz``). When
+    # set, the case is written but never integrated: the cross-sections are
+    # synthesised as H @ e from this case's own surface boundary condition
+    # (see :mod:`enforceflux.microhh.tagged_operator`). Valid only for a case
+    # sharing the operator's grid, flow, and source footprint — the synthesis
+    # checks all three and refuses otherwise.
+    operator_npz: Path | None = None
+
     # Cross-section planes, in box coordinates: ``cross_xy_m`` is a height and
     # ``cross_xz_m`` a box-y. Both default to the FIRST source's height and y,
     # which means adding or reordering sources silently moves the slice — set
@@ -433,6 +441,9 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
             _p(restart["case_dir"]) if restart else None
         ),
         restart_time_s=(int(restart["time_s"]) if restart else None),
+        operator_npz=(
+            _p(mh["operator_npz"]) if mh.get("operator_npz") else None
+        ),
         cross_xy_m=(float(cross["xy_m"]) if "xy_m" in cross else None),
         cross_xz_m=(float(cross["xz_m"]) if "xz_m" in cross else None),
         surface_flux_patches=tuple(

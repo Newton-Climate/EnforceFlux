@@ -330,6 +330,118 @@ def read_operator(
     return times, H / np.float32(case.reference_kinematic_flux)
 
 
+@dataclass(frozen=True)
+class LoadedOperator:
+    """A tagged-tracer operator read back from ``operator.npz``."""
+
+    times_s: np.ndarray            # (n_time,) MicroHH iteration stamps
+    H: np.ndarray                  # (n_time, jtot, itot, n_tracer)
+    cells: np.ndarray              # (n_tracer, 2) as (j, i)
+    reference_kinematic_flux: float
+    level_index: int               # cross-section plane H was read from
+
+    @property
+    def grid(self) -> tuple[int, int]:
+        """``(jtot, itot)`` of the plane the operator predicts."""
+        return int(self.H.shape[1]), int(self.H.shape[2])
+
+
+def load_operator(path: Path) -> LoadedOperator:
+    """Read an ``operator.npz`` written by the tagged-tracer build."""
+    path = Path(path)
+    with np.load(path) as d:
+        if "level_index" not in d.files:
+            raise ValueError(
+                f"{path} predates the level_index field, so the plane it was "
+                "read from is unknown. Re-run `run_les_tagged_operator.py "
+                "compare` to rewrite it."
+            )
+        return LoadedOperator(
+            times_s=np.asarray(d["times_s"], dtype=int),
+            H=np.asarray(d["H"], dtype=np.float32),
+            cells=np.asarray(d["cells"], dtype=int),
+            reference_kinematic_flux=float(d["reference_kinematic_flux"]),
+            level_index=int(d["level_index"]),
+        )
+
+
+def synthesize_cross_sections(cfg, operator_path: Path) -> dict:
+    """Write a case's xy cross-sections as ``H @ e`` instead of integrating it.
+
+    The emitted scalar is passive, so a case that shares the operator's grid,
+    flow, and source footprint has a cross-section time series that is an exact
+    linear function of its own bottom boundary condition — up to the scalar
+    limiters, whose cost is measured in the operator's ``validation.json``.
+    This writes the same raw ``(jtot, itot)`` binaries MicroHH would have
+    written, so every downstream reader is unchanged.
+
+    ``cfg`` is a :class:`~enforceflux.microhh.sim_config.MicroHHConfig` whose
+    case has already been written (the surface BC must exist on disk).
+    """
+    op = load_operator(operator_path)
+    case_dir = Path(cfg.case_dir)
+    dtype = np.dtype("<f4") if cfg.precision == "float32" else np.dtype("<f8")
+
+    jtot, itot = op.grid
+    if (cfg.grid.itot, cfg.grid.jtot) != (itot, jtot):
+        raise ValueError(
+            f"Operator {operator_path} is for a ({itot}, {jtot}) (itot, jtot) "
+            f"grid, but this case is ({cfg.grid.itot}, {cfg.grid.jtot}). An "
+            "operator is only valid on the grid it was integrated on."
+        )
+
+    bot_path = case_dir / f"{cfg.scalar_name}_bot_in.{BOT_STAMP}"
+    if not bot_path.is_file():
+        raise FileNotFoundError(
+            f"{bot_path} is missing. The operator multiplies a case's own "
+            "surface boundary condition, so the case must be written (and must "
+            "define surface-flux sources) before it can be evaluated."
+        )
+    bot = np.fromfile(bot_path, dtype=dtype).reshape(jtot, itot)
+
+    # Emission outside the tagged cells has no column in H and would be
+    # silently dropped, turning a configuration error into a quiet low bias.
+    tagged = np.zeros((jtot, itot), dtype=bool)
+    tagged[op.cells[:, 0], op.cells[:, 1]] = True
+    stray = np.argwhere((bot > 0.0) & ~tagged)
+    if stray.size:
+        raise ValueError(
+            f"{len(stray)} emitting cell(s) fall outside the operator's "
+            f"{len(op.cells)} tagged cells, e.g. (j, i)={tuple(stray[0])}. The "
+            "source footprint must match the one the operator was built for."
+        )
+
+    values = apply_operator(op.H, bot, op.cells)
+
+    # MicroHH stamps each cross-section with the iteration time; keeping the
+    # operator's own stamps is what makes the output indistinguishable from a
+    # real run to `canonical.from_microhh`.
+    written = []
+    for value, stamp in zip(values, op.times_s):
+        out = case_dir / f"{cfg.scalar_name}.xy.000.{op.level_index:05d}.{int(stamp):07d}"
+        value.astype(dtype).tofile(out)
+        written.append(out)
+
+    rho = _reference_density_for(cfg)
+    cell_area = cfg.grid.dx * cfg.grid.dy
+    return {
+        "backend": "les_tagged_operator",
+        "operator": str(operator_path),
+        "level_index": op.level_index,
+        "n_frames": len(written),
+        "times_s": [int(s) for s in op.times_s],
+        "n_source_cells": int(len(op.cells)),
+        "emitted_kg_s": float(bot.sum() * rho * cell_area),
+        "peak_mixing_ratio": float(values.max()),
+    }
+
+
+def _reference_density_for(cfg) -> float:
+    from enforceflux.microhh.case import _reference_density
+
+    return _reference_density(cfg)
+
+
 def apply_operator(H: np.ndarray, surface_flux: np.ndarray,
                    cells: np.ndarray) -> np.ndarray:
     """Predict the cross-section time series for an emission field.
@@ -343,11 +455,14 @@ def apply_operator(H: np.ndarray, surface_flux: np.ndarray,
 
 
 __all__ = [
+    "LoadedOperator",
     "TaggedCase",
     "apply_operator",
     "build_tagged_case",
+    "load_operator",
     "read_ini",
     "read_operator",
+    "synthesize_cross_sections",
     "run_tagged_case",
     "surface_field",
 ]

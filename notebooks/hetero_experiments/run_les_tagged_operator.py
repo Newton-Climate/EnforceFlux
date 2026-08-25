@@ -211,6 +211,9 @@ def stage_compare() -> None:
         OPERATOR_PATH, times_s=times, H=H, cells=case.cells,
         reference_kinematic_flux=case.reference_kinematic_flux,
         tracers=np.array(case.tracers),
+        # The plane H lives on. Without it a consumer cannot know which
+        # cross-section it is entitled to reconstruct.
+        level_index=LEVEL_INDEX,
     )
     print(f"operator H {H.shape} (n_time, jtot, itot, n_tracer) -> {OPERATOR_PATH}")
 

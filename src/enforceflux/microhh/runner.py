@@ -162,6 +162,25 @@ class MicroHHRunner:
                 output_path=None, executed=False, meta=meta,
             )
 
+        if cfg.operator_npz is not None:
+            # A precomputed tagged-tracer operator replaces the integration
+            # entirely: the case is written, then its cross-sections are
+            # synthesised from its own surface BC. Seconds instead of hours,
+            # at the superposition error reported in the operator's own
+            # validation. Everything downstream reads the case dir as usual.
+            from enforceflux.microhh.tagged_operator import synthesize_cross_sections
+
+            # A prior real run may have left cross-sections at other stamps;
+            # they would be read back as if this case had produced them.
+            self.clean_outputs()
+            meta["operator"] = synthesize_cross_sections(cfg, cfg.operator_npz)
+            meta["integrated"] = False
+            return MicroHHRunResult(
+                case_dir=cfg.case_dir, ini_path=paths["ini"],
+                input_nc_path=paths["input_nc"],
+                output_path=cfg.output_path, executed=True, meta=meta,
+            )
+
         if not cfg.executable.exists():
             raise FileNotFoundError(
                 f"MicroHH executable not found at {cfg.executable}. Clone and build "
