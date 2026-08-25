@@ -146,3 +146,72 @@ def test_microhh_convenience_requires_receptor_or_grid_index(tmp_path):
         intervals_from_microhh_output(
             _StubCfg(), z_ref=10.0, z0=0.1, window_s=50.0,
         )
+
+
+# ── clipping the column to the observation window ────────────────────────
+
+
+def _stub_sonic(nt=240, dt=1.0, t0=0.0):
+    """A SonicObservation covering t0 .. t0+nt*dt with wall-model diagnostics."""
+    from enforceflux.instrument.sonic import SonicObservation
+
+    times = t0 + np.arange(nt, dtype=float) * dt
+    rng = np.random.default_rng(0)
+    return SonicObservation(
+        instrument_id="stub", interval_id="t0000", x=0.0, y=0.0, z=2.0,
+        times_s=times,
+        u=5.0 + rng.normal(0, 0.2, nt), v=rng.normal(0, 0.2, nt),
+        w=rng.normal(0, 0.1, nt), theta=300.0 + rng.normal(0, 0.05, nt),
+        z0=0.1,
+        meta={"surface_ustar": np.full(nt, 0.3), "surface_obuk": np.full(nt, -50.0)},
+    )
+
+
+@pytest.fixture
+def patched_sonic(monkeypatch):
+    import enforceflux.instrument.sonic as sonic_mod
+
+    monkeypatch.setattr(sonic_mod, "sonic_from_microhh",
+                        lambda *a, **k: _stub_sonic())
+
+    class _Cfg:
+        receptors = ()
+    return _Cfg()
+
+
+def test_clip_selects_only_the_requested_window(patched_sonic):
+    out = intervals_from_microhh_output(
+        patched_sonic, ix=0, iy=0, z_ref=2.0, z0=0.1,
+        window_s=60.0, start_s=60.0, end_s=180.0,
+    )
+    # 60..180 s inclusive is 121 samples at 1 Hz -> two whole 60 s windows.
+    assert len(out) == 2
+
+
+def test_unclipped_covers_the_whole_column(patched_sonic):
+    out = intervals_from_microhh_output(
+        patched_sonic, ix=0, iy=0, z_ref=2.0, z0=0.1, window_s=60.0)
+    assert len(out) == 4
+
+
+def test_clip_outside_the_column_is_refused(patched_sonic):
+    with pytest.raises(ValueError, match="does not overlap"):
+        intervals_from_microhh_output(
+            patched_sonic, ix=0, iy=0, z_ref=2.0, z0=0.1,
+            window_s=60.0, start_s=10_000.0,
+        )
+
+
+def test_missing_wall_model_diagnostics_warns(monkeypatch):
+    """Resolved-covariance u* is biased low; that must not pass silently."""
+    import enforceflux.instrument.sonic as sonic_mod
+    from dataclasses import replace
+
+    monkeypatch.setattr(sonic_mod, "sonic_from_microhh",
+                        lambda *a, **k: replace(_stub_sonic(), meta={}))
+
+    class _Cfg:
+        receptors = ()
+    with pytest.warns(UserWarning, match="no 'ustar'/'obuk'"):
+        intervals_from_microhh_output(
+            _Cfg(), ix=0, iy=0, z_ref=2.0, z0=0.1, window_s=60.0)

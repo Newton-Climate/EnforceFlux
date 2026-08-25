@@ -124,6 +124,20 @@ def intervals_from_les(
     return intervals
 
 
+def _clip_sonic(obs: SonicObservation, keep: np.ndarray) -> SonicObservation:
+    """Restrict a SonicObservation to a boolean time mask, meta included."""
+    from dataclasses import replace
+
+    meta = dict(obs.meta)
+    for key in ("surface_ustar", "surface_obuk"):
+        if meta.get(key) is not None:
+            meta[key] = np.asarray(meta[key], dtype=float)[keep]
+    return replace(
+        obs, times_s=obs.times_s[keep], u=obs.u[keep], v=obs.v[keep],
+        w=obs.w[keep], theta=obs.theta[keep], meta=meta,
+    )
+
+
 def intervals_from_microhh_output(
     cfg,                       # MicroHHConfig
     *,
@@ -133,10 +147,18 @@ def intervals_from_microhh_output(
     z_ref: float,
     z0: float,
     window_s: float,
+    start_s: float | None = None,
+    end_s: float | None = None,
     id_prefix: str = "t",
 ) -> list[BlsInterval]:
     """Sample a MicroHH column as a fixed-height sonic and window into
     :class:`BlsInterval`s.
+
+    ``start_s`` / ``end_s`` clip the column before windowing. Without them the
+    windows begin at the column's first sample, which is the start of the run
+    — not the start of the observation window a restarted case is inverted
+    over. Clipping is what lets interval ``k`` correspond to observation frame
+    ``k``.
 
     Provide either ``receptor_id`` (resolved via ``cfg.receptors``) or
     explicit ``(ix, iy)`` grid indices. The instrument observes at ``z_ref``
@@ -154,6 +176,20 @@ def intervals_from_microhh_output(
         z_ref=z_ref, z0=z0,
     )
     times_s = obs_full.times_s
+    if start_s is not None or end_s is not None:
+        keep = np.ones(times_s.size, dtype=bool)
+        if start_s is not None:
+            keep &= times_s >= float(start_s)
+        if end_s is not None:
+            keep &= times_s <= float(end_s)
+        if not keep.any():
+            raise ValueError(
+                f"MicroHH column spans {times_s[0]:.0f}..{times_s[-1]:.0f} s, "
+                f"which does not overlap the requested "
+                f"{start_s}..{end_s} s window"
+            )
+        obs_full = _clip_sonic(obs_full, keep)
+        times_s = obs_full.times_s
     if times_s.size < 2:
         raise ValueError("MicroHH column has fewer than 2 timesteps.")
     dt = float(np.median(np.diff(times_s)))
@@ -173,6 +209,20 @@ def intervals_from_microhh_output(
     # wall-model u*; retain resolved samples for mean wind and direction.
     surface_ustar = obs_full.meta.get("surface_ustar")
     surface_obuk = obs_full.meta.get("surface_obuk")
+    if surface_ustar is None or surface_obuk is None:
+        # Without the wall-model diagnostics u* falls back to resolved
+        # covariance, which vanishes toward the LES wall and is biased low —
+        # and at typical column cadences the spectrum is under-resolved too.
+        # Silence here would propagate a wrong u* into every footprint.
+        import warnings
+
+        warnings.warn(
+            "MicroHH column has no 'ustar'/'obuk'; bLS intervals will use "
+            "resolved-covariance u*, which is biased low near the LES wall. "
+            "Sample a column from a run that writes the wall-model "
+            "diagnostics.",
+            stacklevel=2,
+        )
 
     intervals: list[BlsInterval] = []
     for k in range(n_windows):

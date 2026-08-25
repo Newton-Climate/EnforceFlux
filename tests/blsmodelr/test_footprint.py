@@ -216,3 +216,68 @@ def test_grid_returns_bls_source_instances():
         x_bounds=(0.0, 1.0), y_bounds=(0.0, 1.0), nx=1, ny=1
     )
     assert isinstance(sources[0], BlsSource)
+
+
+# ── interval_reduce="none": one observation row per interval ──────────────
+
+
+def _two_interval_rows():
+    return [
+        ("s1", "src_a", "i0", 1.0), ("s1", "src_b", "i0", 2.0),
+        ("s2", "src_a", "i0", 3.0), ("s2", "src_b", "i0", 4.0),
+        ("s1", "src_a", "i1", 10.0), ("s1", "src_b", "i1", 20.0),
+        ("s2", "src_a", "i1", 30.0), ("s2", "src_b", "i1", 40.0),
+    ]
+
+
+def test_jacobian_none_keeps_the_interval_axis():
+    g = jacobian_from_bls_result(
+        result=_make_result(_two_interval_rows()),
+        sensor_order=["s1", "s2"],
+        source_order=["src_a", "src_b"],
+        interval_reduce="none",
+        interval_order=["i0", "i1"],
+    )
+    assert g.shape == (2, 2, 2)
+    assert np.allclose(g[0], [[1.0, 2.0], [3.0, 4.0]])
+    assert np.allclose(g[1], [[10.0, 20.0], [30.0, 40.0]])
+
+
+def test_jacobian_none_follows_the_requested_interval_order():
+    g = jacobian_from_bls_result(
+        result=_make_result(_two_interval_rows()),
+        sensor_order=["s1", "s2"],
+        source_order=["src_a", "src_b"],
+        interval_reduce="none",
+        interval_order=["i1", "i0"],
+    )
+    assert np.allclose(g[0], [[10.0, 20.0], [30.0, 40.0]])
+
+
+def test_jacobian_none_averages_to_the_mean_path():
+    kw = dict(result=_make_result(_two_interval_rows()),
+              sensor_order=["s1", "s2"], source_order=["src_a", "src_b"])
+    stacked = jacobian_from_bls_result(
+        **kw, interval_reduce="none", interval_order=["i0", "i1"])
+    assert np.allclose(stacked.mean(axis=0),
+                       jacobian_from_bls_result(**kw, interval_reduce="mean"))
+
+
+def test_jacobian_none_requires_an_interval_order():
+    with pytest.raises(ValueError, match="interval_order must name"):
+        jacobian_from_bls_result(
+            result=_make_result(_two_interval_rows()),
+            sensor_order=["s1", "s2"], source_order=["src_a", "src_b"],
+            interval_reduce="none",
+        )
+
+
+def test_jacobian_none_refuses_a_missing_interval():
+    """A gap cannot be averaged over here; a zero row would be a fake datum."""
+    rows = [r for r in _two_interval_rows() if not (r[0] == "s2" and r[2] == "i1")]
+    with pytest.raises(ValueError, match="every"):
+        jacobian_from_bls_result(
+            result=_make_result(rows),
+            sensor_order=["s1", "s2"], source_order=["src_a", "src_b"],
+            interval_reduce="none", interval_order=["i0", "i1"],
+        )

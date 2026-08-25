@@ -202,7 +202,7 @@ def _run_blsmodelr_operator(
     ]
     bls_sources, cell_area = build_source_polygons(polygons=polygons)
 
-    intervals = _bls_intervals(opts)
+    intervals = _bls_intervals(opts, run)
 
     # Beam quadrature: an open-path receptor is expanded into `n_path` equally
     # weighted subpoints along its beam. Each subpoint goes to bLS as its own
@@ -253,17 +253,34 @@ def _run_blsmodelr_operator(
         sensor_order=[s.name for s in bls_sensors],
         source_order=[s.name for s in bls_sources],
         interval_reduce=interval_reduce,
+        interval_order=[iv.id for iv in intervals],
     )
     # Collapse the subpoint rows back into one row per instrument (equal-weight
     # arithmetic mean over the beam quadrature). Point sensors have a single
     # subpoint and pass through unchanged.
     sub_index = {s.name: k for k, s in enumerate(bls_sensors)}
-    g_bls = np.zeros((len(sensor_groups), g_bls_sub.shape[1]), dtype=float)
-    inst_row_labels: list[str] = []
-    for r, (inst_id, sub_ids) in enumerate(sensor_groups):
-        rows = np.stack([g_bls_sub[sub_index[s]] for s in sub_ids], axis=0)
-        g_bls[r] = rows.mean(axis=0)
-        inst_row_labels.append(inst_id)
+    if interval_reduce == "none":
+        # (n_interval, n_sub, n_source) -> one row per (interval, instrument),
+        # ordered interval-major. The flux stage indexes operator rows as
+        # ``t * n_instruments + i``, so this ordering is a contract, not taste.
+        g_bls = np.zeros(
+            (len(intervals) * len(sensor_groups), g_bls_sub.shape[2]), dtype=float
+        )
+        inst_row_labels = []
+        for t_, interval in enumerate(intervals):
+            for r, (inst_id, sub_ids) in enumerate(sensor_groups):
+                rows = np.stack(
+                    [g_bls_sub[t_, sub_index[s]] for s in sub_ids], axis=0
+                )
+                g_bls[t_ * len(sensor_groups) + r] = rows.mean(axis=0)
+                inst_row_labels.append(f"{interval.id}|{inst_id}")
+    else:
+        g_bls = np.zeros((len(sensor_groups), g_bls_sub.shape[1]), dtype=float)
+        inst_row_labels = []
+        for r, (inst_id, sub_ids) in enumerate(sensor_groups):
+            rows = np.stack([g_bls_sub[sub_index[s]] for s in sub_ids], axis=0)
+            g_bls[r] = rows.mean(axis=0)
+            inst_row_labels.append(inst_id)
     # bLSmodelR returns "CE" — (kg m-3) per (kg m-2 s-1) areal emission — one
     # column per source polygon. Convert to the canonical operator contract
     # (OPERATOR_UNITS = "ng m-3 / (kg s-1)") so downstream flux code can pair
@@ -301,7 +318,7 @@ def _run_blsmodelr_operator(
     )
 
 
-def _bls_intervals(opts: dict[str, Any]):
+def _bls_intervals(opts: dict[str, Any], run: TransportRunConfig):
     """Resolve turbulence intervals from either inline or LES-nature config."""
     from enforceflux.blsmodelr.wrapper import BlsInterval
 
@@ -317,7 +334,10 @@ def _bls_intervals(opts: dict[str, Any]):
         from enforceflux.blsmodelr.met_from_les import intervals_from_microhh_output
         from enforceflux.microhh.sim_config import load_microhh_config
         nature = dict(from_nature)
-        cfg_path = Path(nature.pop("microhh_config"))
+        # Config-relative, like every other path key in a stage YAML. Taking
+        # it as cwd-relative made the same config resolve differently
+        # depending on where the command was run from.
+        cfg_path = run.resolve(nature.pop("microhh_config"))
         cfg = load_microhh_config(cfg_path)
         return list(intervals_from_microhh_output(cfg, **nature))
     raise ValueError(

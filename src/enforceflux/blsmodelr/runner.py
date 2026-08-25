@@ -55,8 +55,12 @@ class BlsRunner:
             (``x_bounds``, ``y_bounds``, ``nx``, ``ny``, ``name_prefix``).
         intervals : Sequence[BlsInterval]
             MOST windows to average across (see ``interval_reduce``).
-        interval_reduce : {"mean", "sum"}
+        interval_reduce : {"mean", "sum", "none"}
             How :func:`jacobian_from_bls_result` collapses the interval axis.
+            ``"none"`` keeps each interval as its own observation row, giving
+            ``(n_intervals * n_instruments, n_sources)`` ordered
+            interval-major — the layout the flux stage indexes as
+            ``t * n_instruments + i``.
         """
         # Deferred imports: these siblings may not exist yet during parallel
         # development, and importing at module top would break wrapper-only use.
@@ -118,17 +122,29 @@ class BlsRunner:
         )
         result = self.wrapper.run(request)
 
-        g = jacobian_from_bls_result(
+        g_sub = np.asarray(jacobian_from_bls_result(
             result=result,
             sensor_order=sensor_order,
             source_order=source_order,
             interval_reduce=interval_reduce,
-        )
-        g_sub = np.asarray(g, dtype=float)
+            interval_order=[iv.id for iv in intervals],
+        ), dtype=float)
         sub_index = {sensor.name: i for i, sensor in enumerate(sensors)}
-        g = np.zeros((len(sensor_groups), g_sub.shape[1]), dtype=float)
-        for row, (_, sub_ids) in enumerate(sensor_groups):
-            g[row] = np.stack([g_sub[sub_index[sub_id]] for sub_id in sub_ids]).mean(axis=0)
+        if interval_reduce == "none":
+            g = np.zeros(
+                (len(intervals) * len(sensor_groups), g_sub.shape[2]), dtype=float
+            )
+            for t_ in range(len(intervals)):
+                for row, (_, sub_ids) in enumerate(sensor_groups):
+                    g[t_ * len(sensor_groups) + row] = np.stack(
+                        [g_sub[t_, sub_index[sid]] for sid in sub_ids]
+                    ).mean(axis=0)
+        else:
+            g = np.zeros((len(sensor_groups), g_sub.shape[1]), dtype=float)
+            for row, (_, sub_ids) in enumerate(sensor_groups):
+                g[row] = np.stack(
+                    [g_sub[sub_index[sid]] for sid in sub_ids]
+                ).mean(axis=0)
 
         cell_area = _cell_area_m2(sources_config)
         meta = {

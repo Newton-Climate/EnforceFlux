@@ -1,0 +1,104 @@
+stage: dispersion
+run:
+  name: source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op_tr_gp
+inputs: {}
+dispersion:
+  transport:
+    model: blsmodelr
+    mode: operator
+    start: '2020-03-31T00:00:00'
+    end: '2020-03-31T00:15:00'
+  met:
+    records:
+    - time: 2020-03-31T00:00
+      wind_speed_m_s: 3.0
+      wind_direction_deg: 270.0
+      temperature_k: 295.0
+      mixing_height_m: 1200.0
+      friction_velocity_m_s: 0.32
+      sensible_heat_flux_w_m2: 180.0
+  domain:
+    center_lon: -121.75
+    center_lat: 39.15
+    x_min: -1920.0
+    x_max: 1920.0
+    y_min: -960.0
+    y_max: 960.0
+    spacing_m: 80.0
+    receptor_height_m: 3.0
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 0.027778
+      grid:
+        nx: 25
+        ny: 25
+        dx_m: 40.0
+        origin_x_m: -500.0
+        origin_y_m: -500.0
+      alt_m: 2.0
+      covariance:
+        model: exponential
+        L_m: 100.0
+      cv: 1.0
+      seed: 0
+      basis:
+        nx: 3
+        ny: 3
+      prior:
+        mean_kg_s_per_cell: 0.0
+  receptors:
+  - id: r_00000
+    x_m: -1.660140325450243
+    y_m: -873.6357820985567
+    alt_m: 2.0
+    path_length_m: 250.0
+    path_bearing_deg: 305.02103178152356
+  - id: r_00001
+    x_m: -206.39550137642422
+    y_m: -730.1665103525577
+    alt_m: 2.0
+    path_length_m: 250.0
+    path_bearing_deg: 305.02103178152356
+  - id: r_00002
+    x_m: -411.1308624273982
+    y_m: -586.6972386065586
+    alt_m: 2.0
+    path_length_m: 250.0
+    path_bearing_deg: 305.02103178152356
+  - id: r_00003
+    x_m: -615.8662234783721
+    y_m: -443.2279668605595
+    alt_m: 2.0
+    path_length_m: 250.0
+    path_bearing_deg: 305.02103178152356
+  blsmodelr:
+    source_grid:
+      x_bounds:
+      - -500.0
+      - 500.0
+      y_bounds:
+      - -500.0
+      - 500.0
+      nx: 25
+      ny: 25
+    intervals_from_nature:
+      microhh_config: ../../../runs/source_heterogeneity_les_rice_paddy_l200_cv2p0_wind3_surface/dispersion/concentration_microhh/microhh_generated.yaml
+      ix: 22 # Column i index, the receptor cell
+      iy: 4 # Column j index
+      z_ref: 2.0 # Sonic height, m AGL
+      z0: 0.1 # Roughness length, m
+      window_s: 60 # One MOST window per observation frame, s
+      start_s: 3660 # First cross-section stamp, s
+      end_s: 5400 # Donor 10 Hz column stops here, s
+    interval_reduce: none
+    receptor_path_samples: 8
+    wrapper:
+      rscript: Rscript
+      dry_run: false
+      timeout_s: null
+    model_params:
+      n_particles: 25000
+      max_traj_s: 500
+      seed: 20260824
+      ncores: 1

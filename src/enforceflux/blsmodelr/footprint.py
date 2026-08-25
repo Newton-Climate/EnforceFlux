@@ -119,6 +119,7 @@ def jacobian_from_bls_result(
     sensor_order: list[str],
     source_order: list[str],
     interval_reduce: str = "mean",
+    interval_order: list[str] | None = None,
 ) -> np.ndarray:
     """Reshape the long-form CxE table into a ``(n_sensors, n_sources)`` matrix.
 
@@ -130,6 +131,11 @@ def jacobian_from_bls_result(
     * ``"sum"``  — sum over the intervals that appear (use this when the
       intervals are contiguous time bins and you want the total
       residence-time-weighted response).
+    * ``"none"`` — no collapse. Returns ``(n_intervals, n_sensors, n_sources)``
+      instead, one footprint per interval, so each interval can become its own
+      observation row. ``interval_order`` is required, because the interval
+      axis is only meaningful if the caller fixes its order; the ids must be
+      the ones the request was built with.
 
     If a ``(sensor, source)`` pair has **no** intervals at all in the result,
     a :class:`ValueError` is raised listing the missing pairs. Partial
@@ -138,9 +144,21 @@ def jacobian_from_bls_result(
 
     Units are unchanged from :attr:`BlsRunResult.cxe`.
     """
-    if interval_reduce not in ("mean", "sum"):
+    if interval_reduce not in ("mean", "sum", "none"):
         raise ValueError(
-            f"interval_reduce must be 'mean' or 'sum', got {interval_reduce!r}"
+            f"interval_reduce must be 'mean', 'sum', or 'none', got "
+            f"{interval_reduce!r}"
+        )
+    if interval_reduce == "none":
+        if not interval_order:
+            raise ValueError(
+                "interval_reduce='none' returns a per-interval Jacobian, so "
+                "interval_order must name the intervals in the order their "
+                "rows should appear"
+            )
+        return _jacobian_per_interval(
+            result=result, sensor_order=sensor_order,
+            source_order=source_order, interval_order=list(interval_order),
         )
 
     # Bucket cxe values by (sensor, source), keyed for existence check.
@@ -164,5 +182,43 @@ def jacobian_from_bls_result(
         raise ValueError(
             f"jacobian_from_bls_result: no intervals found for "
             f"{len(missing)} (sensor, source) pair(s): {missing}"
+        )
+    return g
+
+
+def _jacobian_per_interval(
+    *,
+    result: BlsRunResult,
+    sensor_order: list[str],
+    source_order: list[str],
+    interval_order: list[str],
+) -> np.ndarray:
+    """``(n_intervals, n_sensors, n_sources)``, one footprint per interval.
+
+    Unlike the collapsing paths, a missing interval cannot be tolerated here:
+    there is no other interval to fall back on, and a zero row would enter the
+    inversion as a real observation carrying no sensitivity.
+    """
+    cells: dict[tuple[str, str, str], float] = {}
+    for iv, s, src, val in zip(
+        result.interval, result.sensor, result.source, result.cxe
+    ):
+        cells[(str(iv), str(s), str(src))] = float(val)
+
+    g = np.zeros((len(interval_order), len(sensor_order), len(source_order)))
+    missing: list[tuple[str, str, str]] = []
+    for t_, iv in enumerate(interval_order):
+        for i, sens in enumerate(sensor_order):
+            for j, src in enumerate(source_order):
+                val = cells.get((iv, sens, src))
+                if val is None:
+                    missing.append((iv, sens, src))
+                    continue
+                g[t_, i, j] = val
+    if missing:
+        raise ValueError(
+            f"jacobian_from_bls_result: interval_reduce='none' needs every "
+            f"(interval, sensor, source) triple, but {len(missing)} are absent, "
+            f"e.g. {missing[:3]}"
         )
     return g

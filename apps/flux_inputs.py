@@ -262,6 +262,26 @@ def build_from_prebuilt_operator_with_instrument(
             if variance_grid.shape != y_grid.shape:
                 raise ValueError("noise_variance must have the same shape as y_obs")
 
+    # A time-resolved operator can only cover the window its turbulence
+    # intervals were built for. Selecting the matching observation frames is
+    # explicit rather than inferred: obs.nc carries a frame index, not seconds,
+    # so an index range is the only unambiguous way to say it.
+    index_range = cfg.get("input", {}).get("time_index_range")
+    if index_range is not None:
+        i0, i1 = (int(v) for v in index_range)
+        if not 0 <= i0 < i1 <= n_time:
+            raise ValueError(
+                f"input.time_index_range {list(index_range)} is not a valid "
+                f"half-open range within the {n_time} observation frames"
+            )
+        y_grid = y_grid[i0:i1]
+        valid_grid = valid_grid[i0:i1]
+        variance_grid = variance_grid[i0:i1]
+        n_time = i1 - i0
+        obs_meta_time_index_range = [i0, i1]
+    else:
+        obs_meta_time_index_range = None
+
     # ── units contract (state × Jacobian = y_obs) ─────────────────────────
     # Jacobian.units must parse as "<obs_units> / (<state_units>)". We require
     # <obs_units> == y_obs.units and <state_units> to be a per-source-flux unit
@@ -287,11 +307,29 @@ def build_from_prebuilt_operator_with_instrument(
         valid_grid = np.ones((1, n_inst), dtype=bool)
         n_time = 1
 
+    if time_reduce == "mean" and G_fine.shape[0] == n_time * n_inst and n_time > 1:
+        # A time-resolved operator has a row per (interval, instrument), so the
+        # averaging branch above never fires. Silently keeping the full time
+        # series under a config that says "mean" would misreport what was
+        # inverted; make the operator and the config agree explicitly.
+        raise ValueError(
+            f"input.time_reduce is 'mean', but the operator is time-resolved "
+            f"({G_fine.shape[0]} rows = {n_time} intervals x {n_inst} "
+            "instruments). Set input.time_reduce: none to invert the time "
+            "series, or rebuild the operator with interval_reduce: mean."
+        )
     if G_fine.shape[0] != n_time * n_inst:
+        selected = (
+            f" (after selecting frames {obs_meta_time_index_range})"
+            if obs_meta_time_index_range else ""
+        )
         raise ValueError(
             f"Operator has {G_fine.shape[0]} rows, but instrument file has "
-            f"{n_time} × {n_inst} observations. Set input.time_reduce: mean "
-            "for a window-integrated backward LPDM operator."
+            f"{n_time} × {n_inst} observations{selected}. Set "
+            "input.time_reduce: mean for a window-integrated backward LPDM "
+            "operator, or — for a time-resolved operator — set "
+            "input.time_index_range to the frames its intervals were built "
+            f"for ({G_fine.shape[0] // n_inst} of them)."
         )
     row_order = np.asarray([t * n_inst + i for i in range(n_inst) for t in range(n_time)])
     G_coarse = G_fine[row_order] @ (W / counts[:, None]).T
@@ -321,6 +359,8 @@ def build_from_prebuilt_operator_with_instrument(
         "n_time": int(n_time), "n_flux_windows": 1,
         "n_observations_total": int(y_flat.size), "n_observations_used": int(valid.sum()),
         "units": units_meta,
+        "time_index_range": obs_meta_time_index_range,
+        "time_reduce": time_reduce,
     }
     diagnostics = {
         "L_true_m": L_true_m, "L_B_m": L_B_m,
