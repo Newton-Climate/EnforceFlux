@@ -1,15 +1,14 @@
 stage: flux
 run:
-  name: source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op_tr
+  name: source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op_ctl
 inputs:
-  dispersion: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op_tr_gp/dispersion
-  obs: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op_tr/instrument
+  dispersion: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op_gp/dispersion
+  obs: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op/instrument
 flux:
   input:
     mode: instrument_netcdf
     level_index: 0
-    time_reduce: none
-    time_index_range: [0, 29] # Frames the operator's windows cover
+    time_reduce: mean
   observations:
     default_sigma: 0.01
     # bLS-versus-LES transport/representation uncertainty in ng m-3.

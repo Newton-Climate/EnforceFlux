@@ -353,10 +353,22 @@ def build_from_prebuilt_operator_with_instrument(
         L_true_m = float(getattr(ds, "L_true_m", 0.0))
         truth_fine = np.asarray(ds.variables["F_true"][:], dtype=float).ravel() * mapping.fine_cell_areas_m2
 
+    # Each observation's sensitivity to a spatially uniform total flux
+    # [ng m-3 / (kg s-1)]. The multiplicative representation-error term needs
+    # exactly this, and only the code holding the basis mapping can form it —
+    # for a one-cell state it is the state column itself, but for a resolved
+    # state no single column carries it.
+    uniform_template = (
+        np.asarray(mapping.fine_cell_areas_m2, dtype=float)
+        / float(np.sum(mapping.fine_cell_areas_m2))
+    )
+    uniform_total_sensitivity = (G_fine[row_order] @ uniform_template)[valid]
+
     obs_meta = {
         "mode": "instrument_netcdf", "input_mode": "instrument_netcdf",
         "instrument_netcdf": str(instrument_netcdf), "y_variable": y_name,
         "n_time": int(n_time), "n_flux_windows": 1,
+        "uniform_total_sensitivity": uniform_total_sensitivity.tolist(),
         "n_observations_total": int(y_flat.size), "n_observations_used": int(valid.sum()),
         "units": units_meta,
         "time_index_range": obs_meta_time_index_range,
