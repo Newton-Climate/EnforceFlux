@@ -157,6 +157,53 @@ def _receptor_cells(case: TaggedCase) -> list[tuple[int, int]]:
     return seen
 
 
+def check_flow_matches(case: TaggedCase, nature: Path) -> dict:
+    """Confirm the operator integrated the same flow as the nature runs.
+
+    The operator is only comparable to them if warm-starting from the shared
+    donor really did reproduce their turbulence. It should be bitwise: the
+    emitted scalars are passive, and the adaptive timestep reads only the
+    velocities and `evisc`, so carrying 196 tracers instead of 2 must not move
+    a single flow value. If this ever fails, differences at the receptor are
+    flow mismatch and the validation below means nothing.
+    """
+    from netCDF4 import Dataset
+
+    t_path = case.case_dir / f"{case.case_name}.default.{DONOR_TIME_S:07d}.nc"
+    n_path = nature / f"{case.case_name}.default.{DONOR_TIME_S:07d}.nc"
+    try:
+        probe = Dataset(t_path)
+    except OSError as exc:
+        # MicroHH holds the statistics file open for the length of the run, so
+        # a mid-run `compare` cannot read it. That is not a failed check.
+        return {"status": "unreadable", "detail": str(exc)}
+    probe.close()
+
+    with Dataset(t_path) as dt_, Dataset(n_path) as dn:
+        gt, gn = dt_.groups["default"], dn.groups["default"]
+        nt = min(len(dt_["time"][:]), len(dn["time"][:]))
+        shared = [
+            v for v in gn.variables
+            if v in gt.variables and not v.startswith(SCALAR)
+        ]
+        mismatched = []
+        for v in shared:
+            a, b = np.asarray(gt[v][:nt]), np.asarray(gn[v][:nt])
+            if a.shape != b.shape or not np.array_equal(
+                np.nan_to_num(a), np.nan_to_num(b)
+            ):
+                mismatched.append(v)
+        same_time = bool(np.array_equal(dt_["time"][:nt], dn["time"][:nt]))
+    return {
+        "status": "checked",
+        "n_records": int(nt),
+        "n_flow_vars": len(shared),
+        "n_mismatched": len(mismatched),
+        "mismatched": mismatched,
+        "time_identical": same_time,
+    }
+
+
 def stage_compare() -> None:
     case = _load_spec()
     times, H = read_operator(case, level_index=LEVEL_INDEX, since_s=DONOR_TIME_S)
@@ -177,6 +224,19 @@ def stage_compare() -> None:
 
     receptors = _receptor_cells(case)
     print(f"receptor cells (j, i): {receptors}")
+
+    flow = check_flow_matches(case, _nature_cases()[0][1])
+    if flow.get("status") == "unreadable":
+        print("flow check: SKIPPED (statistics file still held open by a "
+              "running MicroHH; re-run `compare` once the run finishes)")
+    elif flow["n_mismatched"] or not flow["time_identical"]:
+        print(f"WARNING: flow differs from the nature runs "
+              f"({flow['n_mismatched']}/{flow['n_flow_vars']} vars, "
+              f"time_identical={flow['time_identical']}): {flow['mismatched'][:5]}. "
+              f"Receptor differences below are flow mismatch, not operator error.")
+    else:
+        print(f"flow check: {flow['n_flow_vars']}/{flow['n_flow_vars']} variables "
+              f"bitwise identical to the nature runs over {flow['n_records']} records")
 
     rows = []
     for label, nature in _nature_cases():
