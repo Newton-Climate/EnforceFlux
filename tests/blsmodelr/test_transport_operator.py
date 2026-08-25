@@ -108,7 +108,13 @@ def test_bls_transport_operator_refuses_single_point_open_path():
 
 
 def _two_intervals(config: dict) -> dict:
-    """Same config with a second, differently-forced turbulence window."""
+    """Same config with a second, differently-forced turbulence window.
+
+    Wind speed must be among the differences: the dry-run shim is an analytic
+    stub that ignores direction and u*, so two windows differing only in those
+    produce identical rows and the ordering assertion below would hold
+    vacuously.
+    """
     second = dict(config["intervals"][0])
     second.update(id="t1", u_star=0.20, wind_dir_deg=250.0, wind_speed=2.0)
     config["intervals"] = [config["intervals"][0], second]
@@ -150,4 +156,6 @@ def test_bls_operator_none_is_ordered_interval_major():
     )
     # The two intervals are forced differently, so the blocks must differ —
     # otherwise the ordering assertion above would pass on duplicated rows.
-    assert not np.allclose(stacked[:n], stacked[n:])
+    assert not np.allclose(stacked[:n], stacked[n:]), (
+        "interval blocks are identical; the ordering assertion above is vacuous"
+    )

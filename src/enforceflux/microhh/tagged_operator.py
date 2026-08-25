@@ -411,6 +411,20 @@ def synthesize_cross_sections(cfg, operator_path: Path) -> dict:
             "source footprint must match the one the operator was built for."
         )
 
+    # `canonical.from_microhh` discards cross-sections stamped before the
+    # case's spinup. An operator whose window sits entirely inside that
+    # discard would write files nobody reads, and fail two stages later.
+    spinup_s = int(getattr(cfg, "spinup_s", 0))
+    if not (op.times_s >= spinup_s).any():
+        raise ValueError(
+            f"The operator's frames span {int(op.times_s.min())}.."
+            f"{int(op.times_s.max())} s, all before this case's "
+            f"spinup_seconds={spinup_s}. Every synthesised cross-section "
+            "would be discarded when the case is read back; set "
+            "spinup_seconds to 0 for a case restarted into the operator's "
+            "window."
+        )
+
     values = apply_operator(op.H, bot, op.cells)
 
     # MicroHH stamps each cross-section with the iteration time; keeping the

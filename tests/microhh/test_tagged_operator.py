@@ -250,6 +250,9 @@ def _case_config(tmp_path: Path, operator_npz: Path | None):
         sources=[], receptors=[],
         output_path=tmp_path / "native.nc",
         start=datetime(2026, 7, 22, 15, 0, 0),
+        # A case restarted into the operator's window has no spinup of its
+        # own; the canonical reader discards frames stamped before it.
+        spinup_s=0,
         include_h2o=False,
         operator_npz=operator_npz,
     )
@@ -363,3 +366,120 @@ def test_runner_evaluates_the_operator_instead_of_integrating(tmp_path):
     assert sorted(p.name for p in cfg.case_dir.glob("ch4.xy.*")) == [
         f"ch4.xy.000.{LEVEL:05d}.{t:07d}" for t in times
     ]
+
+
+# ── contract: synthesised output must be indistinguishable to readers ──────
+
+
+def test_synthesised_case_is_readable_by_the_canonical_converter(tmp_path):
+    """The seam that makes this feature invisible downstream.
+
+    ``canonical.from_microhh`` is what turns a case directory into
+    ``concentration.nc``. If synthesised cross-sections did not satisfy it
+    exactly — file naming, dtype, frame count, stamp ordering — the operator
+    path would diverge from the LES path at the first stage that reads it.
+    """
+    from enforceflux.transport import canonical
+    from enforceflux.microhh.tagged_operator import synthesize_cross_sections
+
+    cells = np.array([[1, 2], [2, 5]])
+    times = [3660, 3720, 3780]
+    npz = _operator_npz(tmp_path / "operator.npz",
+                        H=_unit_operator(cells, times), cells=cells, ref=1.0,
+                        times=times)
+    cfg = _case_config(tmp_path, npz)
+    bot = np.zeros((JTOT, ITOT))
+    bot[1, 2], bot[2, 5] = 3.0e-8, 1.0e-8
+    _write_bot(cfg, bot)
+    synthesize_cross_sections(cfg, npz)
+
+    field = canonical.from_microhh(cfg, level=LEVEL)
+
+    assert field.values.shape == (len(times), JTOT, ITOT)
+    assert field.timestamps == tuple(f"{t:07d}" for t in times)
+    assert field.x.size == ITOT and field.y.size == JTOT
+    assert field.meta["model"] == "microhh"
+    assert field.meta["level_index"] == LEVEL
+    # Emission ratio survives the unit conversion, which is linear.
+    assert field.values[0, 0, 0] / field.values[0, 0, 1] == pytest.approx(3.0)
+
+
+def test_operator_key_absent_keeps_the_integrating_path(tmp_path):
+    """Configs written before this feature must still demand the binary."""
+    from enforceflux.microhh.runner import MicroHHRunner
+
+    cfg = _case_config(tmp_path, None)
+    assert cfg.operator_npz is None
+    with pytest.raises(FileNotFoundError, match="MicroHH executable not found"):
+        MicroHHRunner(cfg).run()
+
+
+def test_operator_npz_is_optional_in_the_case_yaml(tmp_path):
+    """The YAML key is additive: absent means None, present resolves to a Path."""
+    import yaml
+
+    from enforceflux.microhh.sim_config import load_microhh_config
+
+    blob = {
+        "microhh": {"executable": str(tmp_path / "microhh"),
+                    "case_dir": str(tmp_path / "case")},
+        "simulation": {"name": "transport_run", "start": "2026-07-22T15:00:00"},
+        "grid": {"itot": ITOT, "jtot": JTOT, "ktot": KTOT,
+                 "xsize": 640.0, "ysize": 320.0, "zsize": 1024.0},
+        "domain": {"origin_lon": -121.75, "origin_lat": 39.15},
+        "output": {"path": str(tmp_path / "native.nc")},
+    }
+    plain = tmp_path / "plain.yaml"
+    plain.write_text(yaml.safe_dump(blob))
+    assert load_microhh_config(plain).operator_npz is None
+
+    blob["microhh"]["operator_npz"] = str(tmp_path / "operator.npz")
+    withop = tmp_path / "withop.yaml"
+    withop.write_text(yaml.safe_dump(blob))
+    assert load_microhh_config(withop).operator_npz == tmp_path / "operator.npz"
+
+
+def test_synthesis_matches_apply_operator_exactly(tmp_path):
+    """The file-writing path must not diverge from the in-memory operator."""
+    from enforceflux.microhh.tagged_operator import (
+        load_operator, synthesize_cross_sections,
+    )
+
+    cells = np.array([[1, 2], [2, 5]])
+    times = [3660, 3720]
+    rng = np.random.default_rng(3)
+    H = rng.random((len(times), JTOT, ITOT, len(cells))).astype("f4")
+    npz = _operator_npz(tmp_path / "operator.npz", H=H, cells=cells,
+                        ref=1.0, times=times)
+    cfg = _case_config(tmp_path, npz)
+    bot = np.zeros((JTOT, ITOT))
+    bot[1, 2], bot[2, 5] = 3.0e-8, 1.0e-8
+    _write_bot(cfg, bot)
+    synthesize_cross_sections(cfg, npz)
+
+    op = load_operator(npz)
+    assert op.grid == (JTOT, ITOT)
+    expected = apply_operator(op.H, bot.astype("<f4"), op.cells)
+    for k, stamp in enumerate(times):
+        written = np.fromfile(
+            cfg.case_dir / f"ch4.xy.000.{LEVEL:05d}.{stamp:07d}", dtype="<f4"
+        ).reshape(JTOT, ITOT)
+        np.testing.assert_allclose(written, expected[k], rtol=1e-6)
+
+
+def test_spinup_that_would_discard_every_frame_is_refused(tmp_path):
+    """Catch the misconfiguration where it is fixable, not two stages later."""
+    from dataclasses import replace
+
+    from enforceflux.microhh.tagged_operator import synthesize_cross_sections
+
+    cells = np.array([[1, 2]])
+    times = [3660, 3720]
+    npz = _operator_npz(tmp_path / "operator.npz",
+                        H=_unit_operator(cells, times), cells=cells, ref=1.0,
+                        times=times)
+    cfg = replace(_case_config(tmp_path, npz), spinup_s=7200)
+    _write_bot(cfg, np.zeros((JTOT, ITOT)))
+
+    with pytest.raises(ValueError, match="before this case's spinup_seconds"):
+        synthesize_cross_sections(cfg, npz)
