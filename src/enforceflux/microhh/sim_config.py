@@ -237,6 +237,7 @@ class MicroHHConfig:
 
     # Timing (seconds).
     start: datetime
+    precision: str = "float32"
     spinup_s: int = 7200
     runtime_s: int = 21600
     # Hard cap on the adaptive timestep (s). The actual step is usually set by
@@ -287,6 +288,8 @@ class MicroHHConfig:
     extra_ini: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if self.precision not in {"float32", "float64"}:
+            raise ValueError("MicroHH precision must be 'float32' or 'float64'")
         # Fail at load time, not four minutes into a run.
         decompose_workers(self.num_workers, self.grid)
 
@@ -379,6 +382,7 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
         executable=_p(mh["executable"]),
         case_dir=_p(mh.get("case_dir", f"runs/microhh/{case_name}")),
         case_name=case_name,
+        precision=str(mh.get("precision", "float32")).lower(),
         grid=grid,
         forcing=forcing,
         origin_lon=float(dom["origin_lon"]),

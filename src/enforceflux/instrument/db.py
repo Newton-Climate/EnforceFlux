@@ -35,6 +35,16 @@ class OperatorParams:
 # ─── Instrument parameter database ───────────────────────────────────────────
 
 INSTRUMENT_DB: dict[str, dict[str, OperatorParams]] = {
+    "PS": {
+        "good": OperatorParams(
+            tech_id="PS", mode="good",
+            operator_type="point_concentration", observable="concentration_ppm",
+            sigma_scale=0.0, sigma_abs=0.010,
+            bias_scale=0.0, bias_abs=0.0,
+            detection_limit=0.0, dropout_probability=0.05,
+            cadence_s=60.0, source_ids="synthetic point analyser",
+        ),
+    },
     "OP": {
         "good": OperatorParams(
             tech_id="OP", mode="good",

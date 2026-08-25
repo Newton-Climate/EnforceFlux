@@ -369,6 +369,7 @@ def write_microhh_config(
         "microhh": {
             "executable": str(run.resolve(options["executable"])),
             "case_dir": str(run_dir / "microhh_case"),
+            "precision": str(options.get("precision", "float32")),
             # MPI ranks. Decomposed into (npx,npy) against the grid when the
             # case loads, so an invalid count is rejected there, not mid-run.
             "num_workers": int(options.get("num_workers", 1)),
@@ -442,9 +443,32 @@ def write_microhh_config(
     # Area sources realised as a 2-D surface flux instead of volumetric blobs.
     # Keyed by source id so the emission rate stays declared once, in the shared
     # `sources:` block, and the model block only says HOW to realise it.
-    surface = dict(options.get("surface_flux_sources") or {})
+    surface_option = options.get("surface_flux_sources")
+    if surface_option is None and run.source_generator == "lognormal_field":
+        source_grid = dict(run.source_generator_config.get("grid") or {})
+        if "dx_m" not in source_grid:
+            raise ValueError(
+                "lognormal_field MicroHH sources require sources.config.grid.dx_m "
+                "so the generated field can be represented as a surface flux"
+            )
+        surface = {"*": {"side_m": float(source_grid["dx_m"])}}
+    else:
+        # Explicit false is the opt-out for unusual controlled tests. A mapping
+        # continues to support selected named patches.
+        surface = dict(surface_option or {})
     if surface:
         by_id = {s.id: s for s in run.sources}
+        # A generated field can contain hundreds of cells.  Requiring every
+        # generated id in YAML is both brittle and unreadable, so ``"*"``
+        # applies one patch specification to every shared source.
+        if "*" in surface:
+            if len(surface) != 1:
+                raise ValueError(
+                    "microhh.surface_flux_sources['*'] cannot be combined "
+                    "with explicit source ids."
+                )
+            spec = dict(surface["*"])
+            surface = {sid: spec for sid in by_id}
         unknown = sorted(set(surface) - set(by_id))
         if unknown:
             raise ValueError(

@@ -98,6 +98,11 @@ if (use_stub) {
   out <- rbindlist(rows)
 } else {
   suppressPackageStartupMessages(library(bLSmodelR))
+  # bLS switches to L'Ecuyer-CMRG internally. Initialize that same generator
+  # after package loading (which can alter RNG state) and immediately before
+  # constructing/running the stochastic trajectory model.
+  RNGkind("L'Ecuyer-CMRG")
+  set.seed(as.integer(model$seed %||% 1L))
   # --- Sensors --------------------------------------------------------------
   # bLSmodelR's genSensors takes NAMED arguments where each name becomes the
   # Sensor Name; the value is a list starting with the geometry code ("p" for
@@ -163,7 +168,12 @@ if (use_stub) {
 
   cat_dir <- tempfile("bls_cat_", tmpdir = dirname(args$out))
   dir.create(cat_dir, showWarnings = FALSE)
-  res <- runbLS(input_list, Cat.Path = cat_dir, ncores = 1,
+  # `ncores`: 0 (default) → auto-detect all physical cores on this host so the
+  # operator saturates the machine without the caller having to know how many
+  # cores exist. Any positive int pins the worker count.
+  ncores_req <- as.integer(model$ncores %||% 0L)
+  ncores <- if (ncores_req > 0L) ncores_req else max(parallel::detectCores(logical = FALSE), 1L)
+  res <- runbLS(input_list, Cat.Path = cat_dir, ncores = ncores,
                 show_progress = FALSE, asDT = TRUE)
 
   out <- data.table(

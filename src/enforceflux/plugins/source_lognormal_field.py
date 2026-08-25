@@ -15,6 +15,7 @@ from enforceflux.core.base import ISourceModel
 from enforceflux.source_fields.basis import (
     BasisMapping,
     save_mapping,
+    rectangular_coarse_basis,
     uniform_coarse_basis,
 )
 from enforceflux.source_fields.lognormal_gp import (
@@ -116,8 +117,22 @@ class LognormalFieldSource(ISourceModel):
         spec = _spec_from_config(config)
         rng = np.random.default_rng(spec.seed)
         F = sample_lognormal_field(spec, rng)
-        coarsen = int((config.get("basis") or {}).get("coarsen", 1))
-        mapping = uniform_coarse_basis(spec.grid, coarsen=coarsen)
+        basis_cfg = dict(config.get("basis") or {})
+        has_shape = "nx" in basis_cfg or "ny" in basis_cfg
+        if has_shape:
+            if "nx" not in basis_cfg or "ny" not in basis_cfg:
+                raise ValueError("basis.nx and basis.ny must be provided together")
+            if "coarsen" in basis_cfg:
+                raise ValueError("basis accepts either coarsen or nx/ny, not both")
+            mapping = rectangular_coarse_basis(
+                spec.grid,
+                nx_coarse=int(basis_cfg["nx"]),
+                ny_coarse=int(basis_cfg["ny"]),
+            )
+        else:
+            mapping = uniform_coarse_basis(
+                spec.grid, coarsen=int(basis_cfg.get("coarsen", 1))
+            )
 
         _pending_writes.append((
             "truth_field.nc",

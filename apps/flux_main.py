@@ -181,6 +181,43 @@ def main() -> None:
         n_sources = len(source_names)
         x_prior, Sa = build_prior(legacy_cfg, n_sources, n_flux)
 
+    obs_cfg = legacy_cfg.get("observations", {}) or {}
+    def _add_observation_variance(base, extra):
+        arr = np.asarray(base, dtype=float)
+        extra = np.broadcast_to(np.asarray(extra, dtype=float), (len(y_obs),))
+        return arr + extra if arr.ndim == 1 else arr + np.diag(extra)
+
+    sigma_repr = float(obs_cfg.get("sigma_repr", 0.0))
+    if sigma_repr > 0.0:
+        Se = _add_observation_variance(Se, sigma_repr ** 2)
+        obs_meta["sigma_repr"] = sigma_repr
+
+    # A total-flux inversion can also carry multiplicative transport error.
+    # Its concentration-scale uncertainty grows with each observation's
+    # sensitivity to Q_total, unlike a single absolute error floor. This keeps
+    # a high-sensitivity path segment from dominating solely because G is
+    # larger, while the absolute term above still handles additive mismatch.
+    sigma_repr_fraction = float(obs_cfg.get("sigma_repr_fraction", 0.0))
+    if sigma_repr_fraction > 0.0:
+        if np.asarray(G).shape[1] != 1:
+            raise ValueError(
+                "observations.sigma_repr_fraction currently requires a "
+                "total-only (one-state) inversion"
+            )
+        flux_scale = float(obs_cfg.get("sigma_repr_flux_scale_kg_s", 0.0))
+        if flux_scale <= 0.0:
+            raise ValueError(
+                "observations.sigma_repr_flux_scale_kg_s must be positive "
+                "when sigma_repr_fraction is used"
+            )
+        sigma_by_obs = (
+            sigma_repr_fraction * flux_scale * np.abs(np.asarray(G)[:, 0])
+        )
+        Se = _add_observation_variance(Se, sigma_by_obs ** 2)
+        obs_meta["sigma_repr_fraction"] = sigma_repr_fraction
+        obs_meta["sigma_repr_flux_scale_kg_s"] = flux_scale
+        obs_meta["sigma_repr_by_observation"] = sigma_by_obs.tolist()
+
     inv_cfg = legacy_cfg["inversion"]
     method = str(inv_cfg.get("method", "linear")).strip().lower()
     if method not in {"linear", "nonlinear", "nonnegative"}:

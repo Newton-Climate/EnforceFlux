@@ -279,6 +279,12 @@ class TransportRunConfig:
     end: datetime | None = None
     model_options: dict[str, dict[str, Any]] = field(default_factory=dict)
     base_dir: Path = Path(".")
+    # Preserve how a generated source field was declared. Native adapters need
+    # this semantic information: MicroHH must realise an area-field generator
+    # as a bottom-boundary flux, not silently turn its cells into elevated
+    # volumetric point releases.
+    source_generator: str | None = None
+    source_generator_config: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.model not in MODELS:
@@ -363,7 +369,11 @@ class TransportRunConfig:
 
         # --- source-heterogeneity OSSE (M2) ---
         sources_blob = blob["sources"]
+        source_generator = None
+        source_generator_config: dict[str, Any] = {}
         if isinstance(sources_blob, dict) and "generator" in sources_blob:
+            source_generator = str(sources_blob["generator"]).strip().lower()
+            source_generator_config = dict(sources_blob.get("config") or {})
             sources = tuple(
                 _expand_source_generator(sources_blob, domain)
             )
@@ -383,6 +393,8 @@ class TransportRunConfig:
             end=_parse_time(transport["end"]) if "end" in transport else None,
             model_options=model_options,
             base_dir=base_dir,
+            source_generator=source_generator,
+            source_generator_config=source_generator_config,
         )
 
     @classmethod

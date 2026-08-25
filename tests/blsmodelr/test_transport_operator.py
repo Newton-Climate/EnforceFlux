@@ -72,3 +72,36 @@ def test_bls_transport_operator_builds_jacobian():
     assert result.meta["cell_area_m2"] == pytest.approx(
         (1000.0 / nx) * (1000.0 / ny)
     )
+    assert result.meta["receptor_path_samples"] == 8
+
+
+def test_bls_transport_operator_averages_open_path_subpoints():
+    op = BlsTransportOperator()
+    config = _config()
+    config["receptor_path_samples"] = 4
+    beam = Instrument(
+        id="beam", tech_id="OP", x=-200.0, y=-100.0, z=2.0,
+        path_length_m=400.0, path_bearing_deg=0.0,
+    )
+
+    result = op.build_forward_operator(
+        sources=[], instruments=[beam], domain=None, config=config
+    )
+
+    assert result.g.shape == (1, 100)
+    assert result.meta["receptor_path_samples"] == 4
+
+
+def test_bls_transport_operator_refuses_single_point_open_path():
+    op = BlsTransportOperator()
+    config = _config()
+    config["receptor_path_samples"] = 1
+    beam = Instrument(
+        id="beam", tech_id="OP", x=0.0, y=0.0, z=2.0,
+        path_length_m=400.0, path_bearing_deg=0.0,
+    )
+
+    with pytest.raises(ValueError, match="may not silently degrade"):
+        op.build_forward_operator(
+            sources=[], instruments=[beam], domain=None, config=config
+        )

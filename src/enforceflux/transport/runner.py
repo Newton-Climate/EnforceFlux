@@ -94,17 +94,23 @@ def run_transport(
 def _run_operator(
     run: TransportRunConfig, series: MetSeries, run_dir: Path, *, dry_run: bool
 ) -> TransportRunResult:
+    column_labels = tuple(s.id for s in run.sources)
+
+    # bLS has a native runner here because it operates on area-source polygons
+    # rather than the point-source plugin contract.  Resolve it before the
+    # entry-point registry so a source checkout does not require reinstalling
+    # editable package metadata merely to expose the optional plugin name.
+    if run.model == "blsmodelr":
+        return _run_blsmodelr_operator(run, series, column_labels)
+
     operator = get_plugin("enforceflux.transport_operator", run.model, ITransportOperator)()
     sources = translate.projected_sources(run)
-    column_labels = tuple(s.id for s in run.sources)
 
     if run.model == "aermod":
         config = translate.aermod_config(run, series)
         # Receptors come from the shared config, so no Instrument objects needed.
         result = operator.build_forward_operator(sources, [], None, config)
         row_labels = _aermod_row_labels(run, config)
-    elif run.model == "blsmodelr":
-        return _run_blsmodelr_operator(run, series, column_labels)
     else:
         config, generated = _binary_model_config(run, series, run_dir)
         config["dry_run"] = dry_run
@@ -181,7 +187,7 @@ def _run_blsmodelr_operator(
         build_source_polygons, jacobian_from_bls_result,
     )
     from enforceflux.blsmodelr.wrapper import (
-        BlsInterval, BlsModelParams, BlsRequest, BlsSensor, BlsWrapper,
+        BlsModelParams, BlsRequest, BlsSensor, BlsWrapper,
     )
 
     opts = dict(run.options)
@@ -205,10 +211,15 @@ def _run_blsmodelr_operator(
     # instrument. Point sensors stay as-is (one subpoint, weight 1).
     n_path = int(opts.get("receptor_path_samples", 8))
     instruments = translate.projected_instruments(run)
+    if n_path < 2 and any(inst.path_length_m > 0.0 for inst in instruments):
+        raise ValueError(
+            "bLS open-path instruments require receptor_path_samples >= 2; "
+            "a path may not silently degrade to one point sensor"
+        )
     bls_sensors: list[BlsSensor] = []
     sensor_groups: list[tuple[str, list[str]]] = []  # (instrument_id, subpoint_ids)
     for inst in instruments:
-        if inst.path_length_m > 0.0 and n_path > 1:
+        if inst.path_length_m > 0.0:
             bearing = np.deg2rad(float(inst.path_bearing_deg))
             offsets = (np.arange(n_path) + 0.5) * float(inst.path_length_m) / n_path
             sub_ids: list[str] = []
@@ -279,6 +290,7 @@ def _run_blsmodelr_operator(
             "cell_area_m2": cell_area.tolist(),
             "n_intervals": len(intervals),
             "interval_reduce": interval_reduce,
+            "receptor_path_samples": n_path,
             "workdir": bls_result.meta.get("workdir"),
             "raw_units": _BLS_UNITS,
             "unit_conversion": {

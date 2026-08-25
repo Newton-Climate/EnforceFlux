@@ -297,21 +297,68 @@ def surface_flux_field(cfg: MicroHHConfig) -> np.ndarray:
         x_bearing_deg=cfg.x_bearing_deg,
         source_x0=cfg.source_x0, source_y0=cfg.source_y0,
     )
-    # Cell centres in box coords -> lon/lat -> geographic metres from origin.
-    xb = (np.arange(g.itot) + 0.5) * g.dx
-    yb = (np.arange(g.jtot) + 0.5) * g.dy
-    xx, yy = np.meshgrid(xb, yb)
-    lon, lat = proj.to_lonlat(xx, yy)
-
     rho = _reference_density(cfg)
+
+    def clip(poly, axis, bound, keep_greater):
+        """Sutherland-Hodgman clip against one axis-aligned half-plane."""
+        if not poly:
+            return []
+        out = []
+        for start, end in zip(poly, poly[1:] + poly[:1]):
+            sv, ev = start[axis], end[axis]
+            sin = sv >= bound if keep_greater else sv <= bound
+            ein = ev >= bound if keep_greater else ev <= bound
+            if sin != ein:
+                frac = (bound - sv) / (ev - sv)
+                cross = [start[0] + frac * (end[0] - start[0]),
+                         start[1] + frac * (end[1] - start[1])]
+                out.append(cross)
+            if ein:
+                out.append(end)
+        return out
+
+    def overlap_area(poly, x0, x1, y0, y1):
+        clipped = clip(poly, 0, x0, True)
+        clipped = clip(clipped, 0, x1, False)
+        clipped = clip(clipped, 1, y0, True)
+        clipped = clip(clipped, 1, y1, False)
+        if len(clipped) < 3:
+            return 0.0
+        x = np.asarray([p[0] for p in clipped])
+        y = np.asarray([p[1] for p in clipped])
+        return 0.5 * abs(float(np.dot(x, np.roll(y, -1)) -
+                               np.dot(y, np.roll(x, -1))))
+
+    # Integrate the true overlap of each geographic source square with every
+    # native LES cell.  Centre-in-cell rasterisation drops 40 m truth cells on
+    # an 80 m LES grid and can materially change both total Q and its spatial
+    # pattern.  Fractional overlap conserves mass, including for rotated boxes.
+    bearing = np.radians(cfg.x_bearing_deg)
+    sin_b, cos_b = np.sin(bearing), np.cos(bearing)
+    cell_area = g.dx * g.dy
     for patch in cfg.surface_flux_patches:
-        m_per_deg_lat = 111_320.0
-        m_per_deg_lon = m_per_deg_lat * np.cos(np.radians(patch.lat))
-        east = (lon - patch.lon) * m_per_deg_lon
-        north = (lat - patch.lat) * m_per_deg_lat
+        cx, cy = proj.to_box(patch.lon, patch.lat)
         half = patch.side_m / 2.0
-        inside = (np.abs(east) <= half) & (np.abs(north) <= half)
-        field[inside] += patch.flux_kg_m2_s / rho
+        poly = []
+        for east, north in ((-half, -half), (half, -half),
+                            (half, half), (-half, half)):
+            poly.append([
+                cx + east * sin_b + north * cos_b,
+                cy - east * cos_b + north * sin_b,
+            ])
+        xs = [p[0] for p in poly]
+        ys = [p[1] for p in poly]
+        i0 = max(0, int(np.floor(min(xs) / g.dx)))
+        i1 = min(g.itot - 1, int(np.floor(max(xs) / g.dx)))
+        j0 = max(0, int(np.floor(min(ys) / g.dy)))
+        j1 = min(g.jtot - 1, int(np.floor(max(ys) / g.dy)))
+        for j in range(j0, j1 + 1):
+            for i in range(i0, i1 + 1):
+                area = overlap_area(
+                    poly, i * g.dx, (i + 1) * g.dx,
+                    j * g.dy, (j + 1) * g.dy,
+                )
+                field[j, i] += patch.flux_kg_m2_s * area / (rho * cell_area)
     return field
 
 
@@ -328,7 +375,8 @@ def write_surface_flux_file(cfg: MicroHHConfig, path: Path) -> dict:
     precision when ``[boundary] sbot_2d_list`` names the scalar.
     """
     field = surface_flux_field(cfg)
-    field.astype(np.float64).tofile(path)
+    dtype = np.float32 if cfg.precision == "float32" else np.float64
+    field.astype(dtype).tofile(path)
 
     rho = _reference_density(cfg)
     cell_area = cfg.grid.dx * cfg.grid.dy

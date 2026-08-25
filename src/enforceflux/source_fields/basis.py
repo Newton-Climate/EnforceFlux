@@ -56,6 +56,50 @@ def uniform_coarse_basis(fine_grid: FieldGrid, coarsen: int) -> BasisMapping:
     )
 
 
+def rectangular_coarse_basis(
+    fine_grid: FieldGrid, *, nx_coarse: int, ny_coarse: int,
+) -> BasisMapping:
+    """Partition a regular fine grid into an arbitrary coarse rectangle.
+
+    Unlike :func:`uniform_coarse_basis`, the requested dimensions need not
+    divide the fine dimensions exactly.  ``numpy.array_split`` assigns every
+    fine-grid row and column to one contiguous bin, with bin widths differing
+    by at most one cell.  This permits a deliberately small 3x3 inversion
+    state on grids such as 25x25 while preserving mass exactly.
+    """
+    if not (1 <= nx_coarse <= fine_grid.nx and 1 <= ny_coarse <= fine_grid.ny):
+        raise ValueError(
+            "coarse dimensions must satisfy "
+            f"1 <= nx_coarse <= {fine_grid.nx} and "
+            f"1 <= ny_coarse <= {fine_grid.ny}"
+        )
+
+    x_bins = [np.asarray(v, dtype=int) for v in np.array_split(np.arange(fine_grid.nx), nx_coarse)]
+    y_bins = [np.asarray(v, dtype=int) for v in np.array_split(np.arange(fine_grid.ny), ny_coarse)]
+    n_fine = fine_grid.nx * fine_grid.ny
+    W = np.zeros((nx_coarse * ny_coarse, n_fine), dtype=float)
+    fine_area = fine_grid.dx_m * fine_grid.dx_m
+    fine_areas = np.full(n_fine, fine_area, dtype=float)
+    coarse_areas: list[float] = []
+    centers: list[tuple[float, float]] = []
+    xs, ys = fine_grid.cell_centers()
+
+    for jy, y_idx in enumerate(y_bins):
+        for ix, x_idx in enumerate(x_bins):
+            coarse_idx = jy * nx_coarse + ix
+            fine_idx = (y_idx[:, None] * fine_grid.nx + x_idx[None, :]).ravel()
+            W[coarse_idx, fine_idx] = 1.0
+            coarse_areas.append(float(fine_idx.size * fine_area))
+            centers.append((float(xs[x_idx].mean()), float(ys[y_idx].mean())))
+
+    return BasisMapping(
+        W=W,
+        fine_cell_areas_m2=fine_areas,
+        coarse_cell_areas_m2=np.asarray(coarse_areas, dtype=float),
+        coarse_centers_m=np.asarray(centers, dtype=float),
+    )
+
+
 def polygon_basis(fine_grid: FieldGrid, polygons: list[Any]) -> BasisMapping:
     raise NotImplementedError(
         "polygon_basis is deferred; only uniform_coarse_basis is available in M1."

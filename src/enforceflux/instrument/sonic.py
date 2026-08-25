@@ -244,6 +244,15 @@ def _sonic_from_column_data(
         ch4_at_zref=_col_to_ref(column.ch4),
         h2o_at_zref=(_col_to_ref(column.h2o) if column.h2o is not None else None),
         temperature_at_zref=_col_to_ref(column.temperature),
+        # These are SGS-inclusive wall-model diagnostics. Resolved u'w'/v'w'
+        # alone tends to zero near the LES wall and must not be interpreted as
+        # the total surface friction velocity used by MOST/bLS.
+        surface_ustar=(
+            np.asarray(column.ustar, dtype=float) if column.ustar is not None else None
+        ),
+        surface_obuk=(
+            np.asarray(column.obuk, dtype=float) if column.obuk is not None else None
+        ),
     )
     return SonicObservation(
         instrument_id=instrument_id,

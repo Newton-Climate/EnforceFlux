@@ -103,6 +103,17 @@ def _maybe_add_source_heterogeneity(summary: dict, stage_cfg) -> None:
 
     flux_summary = _json.loads(flux_up.file("summary").read_text())
     x_opt = _np.asarray(flux_summary.get("x_opt_kg_s") or [], dtype=float).reshape(-1)
+    total_only = bool(flux_summary.get("total_only", False))
+    if total_only and x_opt.size == 1:
+        x_true_fine = F_true.ravel() * mapping.fine_cell_areas_m2
+        e_q = abs(float(x_opt[0]) - float(x_true_fine.sum())) / float(x_true_fine.sum())
+        summary["source_heterogeneity"] = {
+            "E_Q": float(e_q), "n_fine_cells": int(mapping.fine_cell_areas_m2.size),
+            "n_coarse_cells": 1, "L_true_m": float(flux_summary.get("L_true_m", 0.0)),
+            "L_B_m": float(flux_summary.get("L_B_m", 0.0)),
+            "inverse_crime_flag": False, "total_only": True,
+        }
+        return
     if x_opt.size != mapping.W.shape[0]:
         return
 

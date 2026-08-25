@@ -108,7 +108,7 @@ def _sample_one(inst: Instrument, sample: LESSample) -> np.ndarray:
             sample.field, sample.x_m, sample.y_m,
             inst.x, inst.y, float(inst.path_length_m), float(inst.path_bearing_deg),
         )
-    if op in ("point_flux", "ec_footprint", "plume_imaging",
+    if op in ("point_concentration", "point_flux", "ec_footprint", "plume_imaging",
               "multi_path_inversion", "lidar_path_integral"):
         return _bilinear(sample.field, sample.x_m, sample.y_m,
                          np.array([inst.x]), np.array([inst.y]))[:, 0]

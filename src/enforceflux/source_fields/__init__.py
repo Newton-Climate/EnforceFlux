@@ -3,6 +3,7 @@ from .lognormal_gp import FieldGrid, LognormalFieldSpec, sample_lognormal_field
 from .basis import (
     BasisMapping,
     uniform_coarse_basis,
+    rectangular_coarse_basis,
     polygon_basis,
     project_flux_to_coarse,
     save_mapping,
@@ -16,6 +17,7 @@ __all__ = [
     "sample_lognormal_field",
     "BasisMapping",
     "uniform_coarse_basis",
+    "rectangular_coarse_basis",
     "polygon_basis",
     "project_flux_to_coarse",
     "save_mapping",
