@@ -9,6 +9,7 @@ ObservableType = Literal[
 ]
 
 OperatorType = Literal[
+    "point_concentration",    # PS: point concentration analyser
     "line_integral",          # OP: path-averaged concentration
     "ec_footprint",           # Synthetic EC footprint fallback for toy demos
     "point_flux",             # CH: chamber accumulation at a point

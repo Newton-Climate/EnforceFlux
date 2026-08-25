@@ -1,0 +1,31 @@
+# ERA5 meteorology for Sacramento Valley on July 22, 2026.
+# At 39.15 N, 121.75 W, ERA5 10 m wind remains between 3.95 and
+# 4.60 m/s from 08:00 through 18:00 PDT (daytime mean: 4.32 m/s).
+#
+# Usage:
+#   enforceflux met --config configs/hetero_rice_paddy_test/sac_met_2026-07-22.yaml
+
+stage: met
+
+run:
+  name: sacramento_valley_2026_july22
+
+met:
+  era5:
+    # 05:00-23:00 PDT, providing a three-hour buffer around daytime.
+    start: "2026-07-22T12:00:00"
+    end: "2026-07-23T06:00:00"
+    timestep_hours: 3
+    vertical_mode: model_levels
+    model_level_grid_deg: 0.25
+    model_level_allow_global_fallback: false
+    cleanup_raw_daily_grib: false
+    bbox:
+      lon_min: -122.75
+      lat_min: 38.0
+      lon_max: -120.75
+      lat_max: 40.0
+
+  available_filename: AVAILABLE
+  skip_if_available_covers_window: true
+  check_timestep_hours: 3

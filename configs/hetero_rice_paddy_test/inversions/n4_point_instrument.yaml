@@ -1,0 +1,35 @@
+stage: instrument
+run:
+  name: source_heterogeneity_les_rice_paddy_l200_cv2p0_wind3_n4_point
+inputs:
+  dispersion: ../../../runs/source_heterogeneity_les_rice_paddy_l200_cv2p0_wind3_surface/dispersion
+instrument:
+  level_index: 0
+  release_index: 0
+  operator:
+    random_seed: 1002
+  instruments:
+  - id: r_00000
+    tech_id: PS
+    mode: good
+    x_m: -104.02782085093723
+    y_m: -801.9011462255571
+    z: 2.0
+  - id: r_00001
+    tech_id: PS
+    mode: good
+    x_m: -308.7631819019112
+    y_m: -658.4318744795581
+    z: 2.0
+  - id: r_00002
+    tech_id: PS
+    mode: good
+    x_m: -513.4985429528851
+    y_m: -514.962602733559
+    z: 2.0
+  - id: r_00003
+    tech_id: PS
+    mode: good
+    x_m: -718.2339040038592
+    y_m: -371.49333098755994
+    z: 2.0

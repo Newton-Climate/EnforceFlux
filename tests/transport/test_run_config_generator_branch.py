@@ -76,4 +76,6 @@ def test_generator_branch_expands(tmp_path):
         assert isinstance(s, RunSource)
     total = sum(s.emission_rate_kg_s for s in run.sources)
     assert abs(total - 1.0e-2) / 1.0e-2 < 1.0e-12
+    assert run.source_generator == "lognormal_field"
+    assert run.source_generator_config["grid"]["dx_m"] == 200.0
     clear_pending_writes()

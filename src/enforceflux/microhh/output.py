@@ -41,7 +41,8 @@ class LesColumnData:
     (time, z) grid.
 
     Native to the MicroHH column NetCDF: ``times_s``, ``z``, ``u``, ``v``,
-    ``w``, ``theta``, ``ch4``, ``h2o`` (when the case includes H2O).
+    ``w``, ``theta``, ``ch4``, ``h2o`` (when the case includes H2O), and the
+    SGS-inclusive surface-layer diagnostics ``ustar`` and ``obuk``.
     Derived from the anelastic base state via
     :mod:`enforceflux.microhh.thermo`: ``pressure`` (shape ``(nz,)``) and
     ``temperature`` (shape ``(nt, nz)``).
@@ -59,6 +60,8 @@ class LesColumnData:
     temperature: np.ndarray        # (nt, nz)  T = θ (p/p0)^κ
     ch4: np.ndarray                # (nt, nz)
     h2o: np.ndarray | None         # (nt, nz) or None when include_h2o=False
+    ustar: np.ndarray | None       # (nt,) SGS-inclusive surface friction velocity
+    obuk: np.ndarray | None        # (nt,) surface Obukhov length
 
 
 def _proj(cfg: MicroHHConfig) -> BoxProjection:
@@ -181,6 +184,10 @@ def read_column_full(cfg: MicroHHConfig, ix: int, iy: int) -> LesColumnData:
         ch4 = np.asarray(ds[cfg.scalar_name].values, dtype=float)
         h2o = (np.asarray(ds[cfg.h2o_name].values, dtype=float)
                if cfg.include_h2o and cfg.h2o_name in ds.variables else None)
+        ustar = (np.asarray(ds["ustar"].values, dtype=float)
+                 if "ustar" in ds.variables else None)
+        obuk = (np.asarray(ds["obuk"].values, dtype=float)
+                if "obuk" in ds.variables else None)
     finally:
         ds.close()
 
@@ -198,7 +205,7 @@ def read_column_full(cfg: MicroHHConfig, ix: int, iy: int) -> LesColumnData:
         ix=ix, iy=iy, times_s=times_s, z=z,
         u=u, v=v, w=w, theta=theta,
         pressure=p_col, temperature=T,
-        ch4=ch4, h2o=h2o,
+        ch4=ch4, h2o=h2o, ustar=ustar, obuk=obuk,
     )
 
 
@@ -221,7 +228,8 @@ def read_cross_xy(
     iter_s = iter_s or _latest_iter(cfg, var, plane)
     path = cfg.case_dir / f"{var}.{plane}.000.{k:05d}.{iter_s}"
     g = cfg.grid
-    return np.fromfile(path, dtype="<f8").reshape(g.jtot, g.itot)
+    dtype = "<f4" if cfg.precision == "float32" else "<f8"
+    return np.fromfile(path, dtype=dtype).reshape(g.jtot, g.itot)
 
 
 def read_cross_xz(
@@ -237,4 +245,5 @@ def read_cross_xz(
     iter_s = iter_s or _latest_iter(cfg, var, plane)
     path = cfg.case_dir / f"{var}.{plane}.000.{j:05d}.{iter_s}"
     g = cfg.grid
-    return np.fromfile(path, dtype="<f8").reshape(g.ktot, g.itot)
+    dtype = "<f4" if cfg.precision == "float32" else "<f8"
+    return np.fromfile(path, dtype=dtype).reshape(g.ktot, g.itot)

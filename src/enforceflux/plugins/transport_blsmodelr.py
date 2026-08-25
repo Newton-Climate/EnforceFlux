@@ -66,6 +66,7 @@ class BlsTransportOperator(ITransportOperator):
             intervals=intervals,
             interval_reduce=interval_reduce,
             model_params=config.get("model_params"),
+            receptor_path_samples=int(config.get("receptor_path_samples", 8)),
         )
 
 

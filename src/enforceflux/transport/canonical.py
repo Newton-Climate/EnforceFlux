@@ -316,9 +316,20 @@ def from_microhh(
             "with cross-section output enabled before it can be canonicalised."
         )
 
+    # Spinup develops the turbulent flow but is not part of the nature
+    # observation window. MicroHH writes cross-sections throughout both
+    # phases, so discard files whose iteration timestamp precedes spinup.
+    spinup_s = int(microhh_config.spinup_s)
+    files = [f for f in files if int(Path(f).name.rsplit(".", 1)[-1]) >= spinup_s]
+    if not files:
+        raise FileNotFoundError(
+            f"No MicroHH xy cross-sections remain after discarding {spinup_s} s spinup"
+        )
+
     grid = microhh_config.grid
+    dtype = "<f4" if microhh_config.precision == "float32" else "<f8"
     frames = [
-        np.fromfile(f, dtype="<f8").reshape(grid.jtot, grid.itot) for f in files
+        np.fromfile(f, dtype=dtype).reshape(grid.jtot, grid.itot) for f in files
     ]
     values = mixing_ratio_to_mass_conc(np.stack(frames)) * KG_M3_TO_NG_M3
 
@@ -342,6 +353,9 @@ def from_microhh(
             "model": "microhh",
             "level_index": level,
             "case_name": microhh_config.case_name,
+            "native_precision": microhh_config.precision,
+            "spinup_discarded_s": spinup_s,
+            "sampling_duration_s": int(microhh_config.runtime_s),
             "coordinate_frame": "east_north",
             "frame_center_lon": float(microhh_config.origin_lon),
             "frame_center_lat": float(microhh_config.origin_lat),

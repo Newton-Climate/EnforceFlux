@@ -164,6 +164,16 @@ def intervals_from_microhh_output(
     if n_windows == 0:
         raise ValueError("Not enough MicroHH snapshots for one full window.")
 
+    # MicroHH writes SGS-inclusive wall-model u* and L into the column file.
+    # Prefer those over resolved-only velocity covariance: in an LES the
+    # resolved stress vanishes toward the wall while SGS stress carries most
+    # of the total momentum flux. Near that same wall, resolved component
+    # variances also collapse and omit SGS turbulence. bLS needs total
+    # surface-layer variances, so use its standard similarity ratios with the
+    # wall-model u*; retain resolved samples for mean wind and direction.
+    surface_ustar = obs_full.meta.get("surface_ustar")
+    surface_obuk = obs_full.meta.get("surface_obuk")
+
     intervals: list[BlsInterval] = []
     for k in range(n_windows):
         sl = slice(k * n_per, (k + 1) * n_per)
@@ -177,5 +187,22 @@ def intervals_from_microhh_output(
             z0=obs_full.z0,
             meta={**obs_full.meta, "window_index": k},
         )
-        intervals.append(interval_from_sonic(obs))
+        interval = interval_from_sonic(obs)
+        if surface_ustar is not None and surface_obuk is not None:
+            from dataclasses import replace
+
+            ustar_window = np.asarray(surface_ustar, dtype=float)[sl]
+            obuk_window = np.asarray(surface_obuk, dtype=float)[sl]
+            finite_u = ustar_window[np.isfinite(ustar_window)]
+            finite_l = obuk_window[np.isfinite(obuk_window)]
+            if finite_u.size and finite_l.size:
+                interval = replace(
+                    interval,
+                    u_star=float(finite_u.mean()),
+                    L=float(finite_l.mean()),
+                    sd_u=2.5 * float(finite_u.mean()),
+                    sd_v=2.0 * float(finite_u.mean()),
+                    sd_w=1.25 * float(finite_u.mean()),
+                )
+        intervals.append(interval)
     return intervals

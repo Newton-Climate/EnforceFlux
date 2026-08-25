@@ -442,6 +442,43 @@ def test_microhh_generates_a_config_its_own_loader_accepts(tmp_path):
     assert east_y == pytest.approx(native.source_y0, abs=1.0)
 
 
+def test_microhh_lognormal_field_defaults_to_surface_flux(tmp_path):
+    """Generated area fields must never silently become volumetric blobs."""
+    from enforceflux.microhh.sim_config import load_microhh_config
+    from enforceflux.plugins.source_lognormal_field import clear_pending_writes
+
+    source_field = {
+        "generator": "lognormal_field",
+        "config": {
+            "Q_true_kg_s": 0.01,
+            "grid": {"nx": 2, "ny": 2, "dx_m": 100.0,
+                     "origin_x_m": -100.0, "origin_y_m": -100.0},
+            "covariance": {"model": "exponential", "L_m": 200.0},
+            "cv": 0.5, "seed": 7,
+        },
+    }
+    clear_pending_writes()
+    run = load(
+        tmp_path,
+        transport={"model": "microhh"},
+        sources=source_field,
+        microhh={
+            "executable": str(tmp_path / "microhh"),
+            "grid": {"itot": 64, "jtot": 32, "ktot": 16},
+            "met_reduce": "mean",
+        },
+    )
+    generated = translate.write_microhh_config(
+        run, translate.build_met_series(run), tmp_path / "run"
+    )
+    native = load_microhh_config(generated)
+    assert native.sources == []
+    assert len(native.surface_flux_patches) == 4
+    assert {p.side_m for p in native.surface_flux_patches} == {100.0}
+    assert sum(p.emission_rate_kg_s for p in native.surface_flux_patches) == pytest.approx(0.01)
+    clear_pending_writes()
+
+
 def test_binary_models_report_missing_settings_clearly(tmp_path):
     run = load(tmp_path, transport={"model": "flexpart"})
     with pytest.raises(ValueError, match="executable"):

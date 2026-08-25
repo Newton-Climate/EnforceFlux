@@ -106,6 +106,10 @@ class BlsModelParams:
     n_particles: int = 50_000
     max_traj_s: int = 200
     seed: int = 1
+    # bLSmodelR parallelises particle trajectories across R workers via its
+    # `ncores` argument. Default = 0 → auto-detect (all physical cores at
+    # runtime); set to a positive int to pin, or 1 for single-threaded.
+    ncores: int = 0
 
 
 @dataclass(frozen=True)

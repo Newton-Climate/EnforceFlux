@@ -75,3 +75,16 @@ def test_seed_reproducibility():
     ra = np.array([s.emission_rate_kg_s for s in a])
     rb = np.array([s.emission_rate_kg_s for s in b])
     assert np.array_equal(ra, rb)
+
+
+def test_accepts_explicit_3x3_basis_on_nondivisible_grid(tmp_path):
+    clear_pending_writes()
+    cfg = _cfg()
+    cfg["grid"] = {"nx": 25, "ny": 25, "dx_m": 40.0}
+    cfg["basis"] = {"nx": 3, "ny": 3}
+    LognormalFieldSource().build_sources(cfg, domain=None)
+    drain_pending_writes(tmp_path)
+
+    from enforceflux.source_fields.basis import load_mapping
+    assert load_mapping(tmp_path / "basis_mapping.npz").W.shape == (9, 625)
+    clear_pending_writes()
