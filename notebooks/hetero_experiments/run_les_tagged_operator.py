@@ -137,6 +137,26 @@ def _nature_field(case: Path, times: np.ndarray, grid, dtype) -> np.ndarray:
     return np.stack(frames).astype(np.float32)
 
 
+def _receptor_cells(case: TaggedCase) -> list[tuple[int, int]]:
+    """Grid cells holding the case's column receptors.
+
+    Domain-wide agreement is not what the inversion consumes — it samples
+    these points, and an operator can conserve mass while being biased here.
+    """
+    keys = read_ini(case.case_dir / f"{case.case_name}.ini")
+    xs = [float(v) for v in keys["coordinates[x]"].split(",")]
+    ys = [float(v) for v in keys["coordinates[y]"].split(",")]
+    itot, jtot, _ = case.grid
+    dx = float(keys["xsize"]) / itot
+    dy = float(keys["ysize"]) / jtot
+    seen: list[tuple[int, int]] = []
+    for x, y in zip(xs, ys):
+        cell = (int(y // dy), int(x // dx))
+        if cell not in seen:
+            seen.append(cell)
+    return seen
+
+
 def stage_compare() -> None:
     case = _load_spec()
     times, H = read_operator(case, level_index=LEVEL_INDEX, since_s=DONOR_TIME_S)
@@ -154,6 +174,9 @@ def stage_compare() -> None:
             "MicroHH does not write one, so this is donor output copied in by "
             "the pre-fix _seed_restart."
         )
+
+    receptors = _receptor_cells(case)
+    print(f"receptor cells (j, i): {receptors}")
 
     rows = []
     for label, nature in _nature_cases():
@@ -187,6 +210,21 @@ def stage_compare() -> None:
             "bulk_p95_rel_err": float(np.percentile(rel_bulk, 95)),
             "bulk_n_cells": int(keep.size),
             "total_mass_ratio": float(pred.sum() / truth.sum()),
+            # What the inversion actually ingests. Reported as a signed bias
+            # too: a systematic offset at the receptor propagates straight
+            # into the retrieved flux, where scatter would largely average out.
+            "receptor_rel_err": {
+                f"j{j}_i{i}": float(
+                    np.abs(pred[:, j, i] - truth[:, j, i]).sum() / truth[:, j, i].sum()
+                )
+                for j, i in receptors
+            },
+            "receptor_rel_bias": {
+                f"j{j}_i{i}": float(
+                    (pred[:, j, i] - truth[:, j, i]).sum() / truth[:, j, i].sum()
+                )
+                for j, i in receptors
+            },
             # Superposition error should not grow without bound as the tracers
             # disperse; a rising profile would mean the limiters compound.
             "per_frame_rel_err": [
@@ -208,19 +246,18 @@ def stage_compare() -> None:
 
 
 def _print_report(rows: list[dict]) -> None:
-    hdr = (f"{'case':14s} {'massw rel':>10s} {'RMSE/max':>9s} {'bulk med':>9s} "
-           f"{'bulk p95':>9s} {'mass ratio':>11s}")
+    hdr = (f"{'case':14s} {'massw rel':>10s} {'mass ratio':>11s} "
+           f"{'recept err':>11s} {'recept bias':>12s}")
     print()
     print("mass-weighted rel err = sum|H.E - truth| / sum(truth); "
           "'bulk' = cells holding the first 99% of mass")
     print(hdr)
     print("-" * len(hdr))
     for r in rows:
+        err = np.mean(list(r['receptor_rel_err'].values()))
+        bias = np.mean(list(r['receptor_rel_bias'].values()))
         print(f"{r['case']:14s} {r['mass_weighted_rel_err']:10.3%} "
-              f"{r['rmse_rel_to_max']:9.3%} "
-              f"{r['bulk_median_rel_err']:9.3%} "
-              f"{r['bulk_p95_rel_err']:9.3%} "
-              f"{r['total_mass_ratio']:11.6f}")
+              f"{r['total_mass_ratio']:11.6f} {err:11.3%} {bias:+12.3%}")
     print()
     print(f"wrote {REPORT_PATH}")
 
