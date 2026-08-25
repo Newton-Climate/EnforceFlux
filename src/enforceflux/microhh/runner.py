@@ -134,8 +134,16 @@ class MicroHHRunner:
         skip = {cfg.scalar_name, f"{cfg.scalar_name}_gradbot"}
         for src in donor.glob(f"*.{stamp}"):
             stem = src.name.rsplit(".", 1)[0]
-            if stem not in skip:
-                shutil.copy2(src, cfg.case_dir / src.name)
+            # `*.<stamp>` also matches the donor's OUTPUT — cross-sections
+            # (`ch4.xy.000.00003.<stamp>`) and dumps — whose stems keep their
+            # own dotted suffixes. Copying those would plant the donor's CH4
+            # field as the first frame of this run's observation window, which
+            # `canonical.from_microhh` would then read as our own. A restart
+            # field is always a bare `<name>.<stamp>`, so a dotted stem is
+            # output, not state.
+            if "." in stem or stem in skip:
+                continue
+            shutil.copy2(src, cfg.case_dir / src.name)
 
         # MicroHH `init` always stamps initialized fields as 0000000, even
         # when the subsequent run starts from a nonzero restart time. Promote
