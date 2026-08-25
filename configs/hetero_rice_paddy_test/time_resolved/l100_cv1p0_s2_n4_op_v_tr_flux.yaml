@@ -1,0 +1,28 @@
+stage: flux
+run:
+  name: source_heterogeneity_les_rice_paddy_l100_cv1p0_s2_wind3_n4_op_v_tr
+inputs:
+  dispersion: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s2_wind3_n4_op_tr_gp/dispersion
+  obs: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s2_wind3_n4_op/instrument
+flux:
+  input:
+    mode: instrument_netcdf
+    level_index: 0
+    time_reduce: none
+    time_index_range: [0, 29] # Frames the operator's windows cover
+  observations:
+    default_sigma: 0.01
+    # bLS-versus-LES transport/representation uncertainty in ng m-3.
+    sigma_repr: 25000.0
+    sigma_repr_fraction: 0.3
+    sigma_repr_flux_scale_kg_s: 0.03
+  inversion:
+    method: nonnegative
+    total_only: false
+    prior_flux_kg_s: 0.0 # No oracle: zero mean, as in the total-only runs
+    prior_covariance:
+      model: diagonal # No prior spatial correlation; do not encode the truth's L
+      # Twice the mean per-cell flux (0.027778 / 9 = 0.003086 kg s-1). The
+      # default 1e-6 is six thousand times tighter than the signal and pins
+      # every cell at the prior.
+      sigma_kg_s: 0.3333333 # 9 cells -> total variance 1.0, matching

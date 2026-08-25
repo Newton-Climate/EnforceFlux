@@ -1,0 +1,24 @@
+stage: flux
+run:
+  name: source_heterogeneity_les_rice_paddy_l100_cv1p0_s1_wind3_n4_op_v_ctl1
+inputs:
+  dispersion: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s1_wind3_n4_op_gp/dispersion
+  obs: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s1_wind3_n4_op/instrument
+flux:
+  input:
+    mode: instrument_netcdf
+    level_index: 0
+    time_reduce: mean
+    time_index_range: [0, 29] # Average the SAME window the time-resolved cases invert
+  observations:
+    default_sigma: 0.01
+    # bLS-versus-LES transport/representation uncertainty in ng m-3.
+    sigma_repr: 25000.0
+    sigma_repr_fraction: 0.3
+    sigma_repr_flux_scale_kg_s: 0.03
+  inversion:
+    method: nonnegative
+    total_only: true
+    total_template: uniform # No oracle knowledge of the source pattern
+    prior_total_flux_kg_s: 0.0
+    prior_total_variance: 1.0 # Vague, as in the sweep
