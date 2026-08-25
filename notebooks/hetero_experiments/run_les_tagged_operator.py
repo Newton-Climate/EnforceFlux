@@ -161,25 +161,31 @@ def stage_compare() -> None:
         pred = apply_operator(H, bot, case.cells)
         truth = _nature_field(nature, times, case.grid, case.dtype)
 
-        # Compare where there is signal: a domain-wide relative error is
-        # dominated by cells the plume never reaches.
+        # Metrics must be mass-weighted. The `[limiter]` positivity clip floors
+        # every tracer at ~2.2e-16 independently, so summing n tracers raises
+        # the far-field floor n-fold. Against a ~1e-8 signal that is physically
+        # nothing, but it makes an unweighted relative error meaningless: the
+        # empty cells report ~n*100% while carrying no mass at all.
         scale = float(truth.max())
-        mask = truth > 0.01 * scale
         resid = pred - truth
+        # Cells holding the bulk of the mass, found by descending concentration.
+        order = np.argsort(truth.ravel())[::-1]
+        cumulative = np.cumsum(truth.ravel()[order])
+        keep = order[cumulative <= 0.99 * truth.sum()]
+        rel_bulk = np.abs(resid.ravel()[keep]) / truth.ravel()[keep]
         rows.append({
             "case": label,
             "n_time": int(len(times)),
             "truth_max": scale,
-            "rmse": float(np.sqrt(np.mean(resid**2))),
+            # L1 error over total mass: the headline, immune to empty cells.
+            "mass_weighted_rel_err": float(np.abs(resid).sum() / truth.sum()),
             "rmse_rel_to_max": float(np.sqrt(np.mean(resid**2)) / scale),
             "max_abs_err": float(np.abs(resid).max()),
-            "mean_bias": float(resid.mean()),
-            "in_plume_median_rel_err": float(
-                np.median(np.abs(resid[mask]) / truth[mask])
-            ) if mask.any() else float("nan"),
-            "in_plume_p95_rel_err": float(
-                np.percentile(np.abs(resid[mask]) / truth[mask], 95)
-            ) if mask.any() else float("nan"),
+            "mean_bias_rel_to_max": float(resid.mean() / scale),
+            # Over the cells carrying the first 99% of mass.
+            "bulk_median_rel_err": float(np.median(rel_bulk)),
+            "bulk_p95_rel_err": float(np.percentile(rel_bulk, 95)),
+            "bulk_n_cells": int(keep.size),
             "total_mass_ratio": float(pred.sum() / truth.sum()),
             # Superposition error should not grow without bound as the tracers
             # disperse; a rising profile would mean the limiters compound.
@@ -202,16 +208,19 @@ def stage_compare() -> None:
 
 
 def _print_report(rows: list[dict]) -> None:
-    hdr = (f"{'case':16s} {'RMSE/max':>10s} {'med rel':>9s} {'p95 rel':>9s} "
-           f"{'mass ratio':>11s} {'max abs':>11s}")
+    hdr = (f"{'case':14s} {'massw rel':>10s} {'RMSE/max':>9s} {'bulk med':>9s} "
+           f"{'bulk p95':>9s} {'mass ratio':>11s}")
     print()
+    print("mass-weighted rel err = sum|H.E - truth| / sum(truth); "
+          "'bulk' = cells holding the first 99% of mass")
     print(hdr)
     print("-" * len(hdr))
     for r in rows:
-        print(f"{r['case']:16s} {r['rmse_rel_to_max']:10.3%} "
-              f"{r['in_plume_median_rel_err']:9.3%} "
-              f"{r['in_plume_p95_rel_err']:9.3%} "
-              f"{r['total_mass_ratio']:11.6f} {r['max_abs_err']:11.3e}")
+        print(f"{r['case']:14s} {r['mass_weighted_rel_err']:10.3%} "
+              f"{r['rmse_rel_to_max']:9.3%} "
+              f"{r['bulk_median_rel_err']:9.3%} "
+              f"{r['bulk_p95_rel_err']:9.3%} "
+              f"{r['total_mass_ratio']:11.6f}")
     print()
     print(f"wrote {REPORT_PATH}")
 
