@@ -59,7 +59,7 @@ class MicroHHRunner:
             "grid.*", "fftwplan.*", "time.*", "*.restart", "*.xy.*", "*.xz.*",
             "*.yz.*", "*.column.*.nc", "*.nc", "rhoref.*", "thermo_basestate.*",
             "*_gradbot.*", "d*dz_mo.*", "u.0*", "v.0*", "w.0*", "th.0*",
-            f"{cfg.scalar_name}.0*", "p.0*", "b.0*",
+            f"{cfg.scalar_name}.0*", f"{cfg.h2o_name}.0*", "p.0*", "b.0*",
         )
         for pat in patterns:
             for path in glob.glob(str(d / pat)):
@@ -100,12 +100,66 @@ class MicroHHRunner:
 
         self.clean_outputs()
         self._invoke(["init", cfg.case_name])
+        if cfg.restart_from_dir is not None:
+            self._seed_restart()
         self._invoke(["run", cfg.case_name])
         meta["executed"] = True
         return MicroHHRunResult(
             case_dir=cfg.case_dir, ini_path=paths["ini"], input_nc_path=paths["input_nc"],
             output_path=cfg.output_path, executed=True, meta=meta,
         )
+
+    def _seed_restart(self) -> None:
+        """Overlay a donor flow restart while keeping the new scalar at zero."""
+        cfg = self.config
+        assert cfg.restart_from_dir is not None
+        assert cfg.restart_time_s is not None
+        donor = cfg.restart_from_dir
+        stamp = f"{cfg.restart_time_s:07d}"
+        if not donor.is_dir():
+            raise FileNotFoundError(f"MicroHH restart case directory not found: {donor}")
+
+        required = {"u", "v", "w", "th", "time"}
+        available = {p.name.rsplit(".", 1)[0] for p in donor.glob(f"*.{stamp}")}
+        missing = sorted(required - available)
+        if missing:
+            raise FileNotFoundError(
+                f"MicroHH restart {donor} at t={cfg.restart_time_s}s is missing {missing}"
+            )
+
+        # `init` has already created zero emitted-scalar and matching bottom-
+        # gradient files at the requested start time. Copy every donor restart
+        # component except those two, preventing old CH4 from contaminating the
+        # new source realization.
+        skip = {cfg.scalar_name, f"{cfg.scalar_name}_gradbot"}
+        for src in donor.glob(f"*.{stamp}"):
+            stem = src.name.rsplit(".", 1)[0]
+            if stem not in skip:
+                shutil.copy2(src, cfg.case_dir / src.name)
+
+        # MicroHH `init` always stamps initialized fields as 0000000, even
+        # when the subsequent run starts from a nonzero restart time. Promote
+        # the freshly initialized, zero emitted scalar and its matching flux
+        # boundary gradient to the requested restart timestamp.
+        for stem in skip:
+            initialized = cfg.case_dir / f"{stem}.0000000"
+            if not initialized.is_file():
+                raise FileNotFoundError(
+                    f"MicroHH init did not create restart seed {initialized}"
+                )
+            shutil.copy2(initialized, cfg.case_dir / f"{stem}.{stamp}")
+
+        # These grid/base-state files are invariant but copying the donor
+        # versions makes the warm start self-contained and bitwise consistent.
+        for name in (
+            "grid.0000000",
+            "fftwplan.0000000",
+            "rhoref.0000000",
+            "thermo_basestate.0000000",
+        ):
+            src = donor / name
+            if src.is_file():
+                shutil.copy2(src, cfg.case_dir / name)
 
     def _launcher(self) -> list[str]:
         """MPI launcher prefix, empty for a serial run.

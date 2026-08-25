@@ -60,7 +60,8 @@ def build_ini(cfg: MicroHHConfig) -> str:
         col_x.append(float(round(x))); col_y.append(float(round(y)))
 
     n_src = len(cfg.sources)
-    total_time = cfg.spinup_s + cfg.runtime_s
+    start_time = cfg.restart_time_s or 0
+    total_time = start_time + cfg.spinup_s + cfg.runtime_s
     # Horizontal cross-section at source height; vertical slice through the
     # (first) source — gives 2D fields to render the plume.
     # An explicit plane wins: deriving it from sources[0] makes the slice an
@@ -194,7 +195,7 @@ def build_ini(cfg: MicroHHConfig) -> str:
     a("")
 
     a("[time]")
-    a("starttime=0")
+    a(f"starttime={start_time}")
     a(f"endtime={total_time}")
     a("dt=6.")                       # initial step; adaptivestep takes over
     a(f"dtmax={cfg.dt_max_s:g}")     # hard cap on the adaptive timestep

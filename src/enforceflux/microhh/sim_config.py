@@ -273,6 +273,14 @@ class MicroHHConfig:
     # by :func:`decompose_workers`, which the grid must divide evenly.
     num_workers: int = 1
 
+    # Optional warm start from a completed MicroHH restart. The flow and
+    # non-emitted scalar state are copied from this case at restart_time_s;
+    # the emitted scalar is reinitialized to zero so a new passive-source
+    # experiment can reuse the exact same turbulent state without inheriting
+    # concentration from the donor run.
+    restart_from_dir: Path | None = None
+    restart_time_s: int | None = None
+
     # Cross-section planes, in box coordinates: ``cross_xy_m`` is a height and
     # ``cross_xz_m`` a box-y. Both default to the FIRST source's height and y,
     # which means adding or reordering sources silently moves the slice — set
@@ -292,6 +300,12 @@ class MicroHHConfig:
             raise ValueError("MicroHH precision must be 'float32' or 'float64'")
         # Fail at load time, not four minutes into a run.
         decompose_workers(self.num_workers, self.grid)
+        if (self.restart_from_dir is None) != (self.restart_time_s is None):
+            raise ValueError(
+                "restart_from_dir and restart_time_s must either both be set or both be omitted"
+            )
+        if self.restart_time_s is not None and self.restart_time_s < 0:
+            raise ValueError("restart_time_s must be nonnegative")
 
     @property
     def decomposition(self) -> tuple[int, int]:
@@ -377,6 +391,7 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
 
     case_name = str(sim.get("name", "case"))
     cross = data.get("cross", {}) or {}
+    restart = dict(mh.get("restart_from") or {})
 
     return MicroHHConfig(
         executable=_p(mh["executable"]),
@@ -414,6 +429,10 @@ def load_microhh_config(yaml_path: str | Path) -> MicroHHConfig:
         h2o_surface_kg_kg=float(spec.get("h2o_surface_kg_kg", 0.008)),
         h2o_scale_height_m=float(spec.get("h2o_scale_height_m", 2000.0)),
         num_workers=int(mh.get("num_workers", 1)),
+        restart_from_dir=(
+            _p(restart["case_dir"]) if restart else None
+        ),
+        restart_time_s=(int(restart["time_s"]) if restart else None),
         cross_xy_m=(float(cross["xy_m"]) if "xy_m" in cross else None),
         cross_xz_m=(float(cross["xz_m"]) if "xz_m" in cross else None),
         surface_flux_patches=tuple(
