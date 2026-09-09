@@ -1,35 +1,34 @@
-# EnforceFlux — MicroHH config for Sherlock (Stanford SRCC).
+# EnforceFlux — MicroHH config for Sherlock (Stanford SRCC), single-GPU build.
 #
-# Assumes the module environment from installations/sherlock/modules.sh is
-# loaded (gcc, openmpi, cmake, hdf5, netcdf-c, netcdf-fortran, fftw). Libraries
-# are resolved through CPATH / LIBRARY_PATH exported there, so we don't
-# hardcode Spack install prefixes that change every Sherlock generation.
+# Companion to sherlock.cmake. Use this one for CUDA runs:
+#   cmake -S microhh -B microhh/build_gpu -DSYST=sherlock_gpu \
+#         -DCMAKE_BUILD_TYPE=RELEASE -DUSECUDA=TRUE -DUSEMPI=FALSE -DUSESP=TRUE
 #
-# Copied into microhh/config/sherlock.cmake by `make install-microhh-sherlock`.
+# MicroHH refuses to combine USEMPI with USECUDA, so a CUDA build is always
+# single-rank: every case run against it needs num_workers: 1.
+#
+# USESP=TRUE gives single-precision (FLOAT_SINGLE). Keep it in step with the
+# `precision:` field of the EnforceFlux MicroHH configs — that field tells
+# EnforceFlux what dtype MicroHH's raw sbot_2d / cross-section files are in,
+# and a mismatch silently misreads them.
+#
+# Assumes the module environment from installations/sherlock/modules.sh, plus
+# the cuda module (loaded there via the toolchain).
 
 # ── Compiler selection ───────────────────────────────────────────────────────
-if(USEMPI)
-    set(ENV{CC}  mpicc )
-    set(ENV{CXX} mpicxx)
-    set(ENV{FC}  mpif90)
-else()
-    set(ENV{CC}  gcc)
-    set(ENV{CXX} g++)
-    set(ENV{FC}  gfortran)
-endif()
+# No MPI wrappers here: CUDA builds are serial.
+set(ENV{CC}  gcc)
+set(ENV{CXX} g++)
+set(ENV{FC}  gfortran)
 
-# ── Compiler flags ───────────────────────────────────────────────────────────
-# Sherlock login nodes and compute nodes have different CPU generations
-# (Skylake, Cascade Lake, Icelake, EPYC). `-march=native` on a login node
-# produces a binary that may crash on other partitions — override with
-# MICROHH_ARCH_FLAG when configuring, e.g.
-#   MICROHH_ARCH_FLAG=-march=skylake-avx512 make install-microhh-sherlock
+# ── Host compiler flags ──────────────────────────────────────────────────────
+# Sherlock's GPU nodes span several CPU generations, so avoid -march=native.
 set(NATIVE_ARCH_FLAG "$ENV{MICROHH_ARCH_FLAG}")
 if(NOT NATIVE_ARCH_FLAG)
     set(NATIVE_ARCH_FLAG "-march=x86-64-v3")
 endif()
 
-set(USER_CXX_FLAGS         "-std=c++17")
+set(USER_CXX_FLAGS         "-std=c++17 -fopenmp")
 set(USER_CXX_FLAGS_RELEASE "-DNDEBUG -O3 ${NATIVE_ARCH_FLAG}")
 set(USER_CXX_FLAGS_DEBUG   "-O0 -g -Wall -Wno-unknown-pragmas")
 
@@ -73,6 +72,21 @@ set(LIBS
     ${NETCDF_LIB_C}
     ${HDF5_HL_LIB} ${HDF5_LIB}
     m z curl)
+
+# ── CUDA ─────────────────────────────────────────────────────────────────────
+if(USECUDA)
+    # Sherlock's GPU pool is heterogeneous (V100 CC 7.0, A100 8.0, RTX/L40S
+    # 8.6-8.9, H100/H200 9.0). Emit SASS for all of them so the binary is not
+    # pinned to whichever node the build happened to land on. Override with
+    # -DCMAKE_CUDA_ARCHITECTURES=80 to build faster for one target.
+    if(NOT CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES 70 80 86 90)
+    endif()
+    set(USER_CUDA_NVCC_FLAGS         "--expt-relaxed-constexpr")
+    set(USER_CUDA_NVCC_FLAGS_RELEASE "-Xptxas -O3 -DNDEBUG")
+    set(USER_CUDA_NVCC_FLAGS_DEBUG   "-Xptxas -O0 -g -DCUDACHECKS")
+    add_definitions(-DRTE_RRTMGP_GPU_MEMPOOL_CUDA)
+endif()
 
 add_definitions(-DDISABLE_2D_MPIIO=1)
 add_definitions(-DRTE_USE_CBOOL)

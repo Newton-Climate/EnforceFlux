@@ -7,7 +7,12 @@ PIP ?= $(PYTHON) -m pip
 
 FLEXPART_REPO = https://gitlab.phaidra.org/flexpart/flexpart.git
 FLEXPART_DIR  = flexpart
-FLEXPART_BIN  = $(FLEXPART_DIR)/src/FLEXPART
+# `make install-flexpart` always builds with eta=yes, and that target is
+# named FLEXPART_ETA. Every config in configs/ points at src/FLEXPART, so the
+# recipe also drops a symlink under the plain name.
+FLEXPART_BIN  = $(FLEXPART_DIR)/src/FLEXPART_ETA
+# Set to x86-64-v3 on heterogeneous clusters; empty = -march=native.
+FLEXPART_ARCH ?=
 
 ECCODES_PREFIX  ?= $(shell brew --prefix eccodes 2>/dev/null || echo /usr/local)
 NETCDF_PREFIX   ?= $(shell brew --prefix netcdf  2>/dev/null || echo /usr/local)
@@ -63,7 +68,10 @@ install-flexpart:
 	CPATH="$(CPATH_FLEXPART)" \
 	LIBRARY_PATH="$(LIBRARY_PATH_FLEXPART)" \
 	FC=gfortran \
-	$(MAKE) -f makefile_gfortran -C "$(FLEXPART_DIR)/src" eta=yes -j$(JOBS)
+	$(MAKE) -f makefile_gfortran -C "$(FLEXPART_DIR)/src" eta=yes \
+		$(if $(FLEXPART_ARCH),arch=$(FLEXPART_ARCH),) -j$(JOBS)
+	@test -x "$(FLEXPART_BIN)" || { echo "ERROR: $(FLEXPART_BIN) was not built"; exit 1; }
+	ln -sf "$$(basename $(FLEXPART_BIN))" "$(FLEXPART_DIR)/src/FLEXPART"
 	@echo "FLEXPART binary: $$(ls -lh $(FLEXPART_BIN))"
 
 # Clone (with submodules) and compile MicroHH — plume-scale LES backend.
@@ -123,10 +131,10 @@ test: install-dev
 # ── Sherlock (Stanford SRCC) ─────────────────────────────────────────────────
 # All Sherlock targets require the module env loaded first:
 #   source installations/sherlock/modules.sh
-# That script exports SHERLOCK=1, ECCODES_PREFIX, NETCDF_PREFIX, NETCDFF_*,
+# That script exports ENFORCEFLUX_SHERLOCK=1, ECCODES_PREFIX, NETCDF_PREFIX, NETCDFF_*,
 # CPATH, and LIBRARY_PATH — the same variables the existing targets consume.
 check-sherlock-env:
-	@if [ "$$SHERLOCK" != "1" ]; then \
+	@if [ "$$ENFORCEFLUX_SHERLOCK" != "1" ]; then \
 		echo "ERROR: Sherlock env not loaded. Run:"; \
 		echo "    source installations/sherlock/modules.sh"; \
 		echo "then re-run this make target."; \
@@ -139,7 +147,7 @@ install-sherlock: check-sherlock-env install-flexpart-sherlock install-microhh-s
 
 # FLEXPART on Sherlock: same makefile_gfortran, prefixes come from the module env.
 install-flexpart-sherlock: check-sherlock-env
-	$(MAKE) install-flexpart
+	$(MAKE) install-flexpart FLEXPART_ARCH=x86-64-v3
 
 # MicroHH on Sherlock: use the sherlock.cmake system config and MPI toolchain.
 install-microhh-sherlock: check-sherlock-env

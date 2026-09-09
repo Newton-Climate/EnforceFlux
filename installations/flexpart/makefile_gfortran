@@ -85,6 +85,10 @@ ifeq ($(arch), native)
 	FUSER = -g $(omp) -march=core-avx2
 else ifeq ($(arch), x86-64)
 	FUSER = -g $(omp) -march=x86-64
+else ifeq ($(arch), x86-64-v3)
+	# Portable baseline for heterogeneous clusters: AVX2 + FMA, supported by
+	# every Skylake/Cascade Lake/Icelake/EPYC node without pinning to one CPU.
+	FUSER = -g $(omp) -march=x86-64-v3
 else ifeq ($(arch), skylake)
 	FUSER = -g $(omp) -march=skylake-avx512
 else ifneq ($(ARM_ARCH),)
@@ -245,11 +249,14 @@ gitversion:
 	@echo $(GIT_VERSION) > gitversion.txt
 
 ## DEPENDENCIES
+# EnforceFlux: dependency section synced verbatim from upstream src/makefile.
+# The previous copy predated the chemistry/emissions module split and had no
+# rule for timemanager_mod.o, so the build failed on a missing chemistry_mod.mod
+# regardless of -j level. Keep this section in sync when bumping FLEXPART.
+#
 
-#1) Independent modules
-#   par_mod.o, com_mod.o, qvsat_mod.o, class_gribfile_mod.o
-
-#2) Modules dependent only on independent modules
+#1) Independent modules: par_mod.o, com_mod.o, qvsat_mod.o class_gribfile_mod.o
+#2) Modules that are only dependent on independent modules
 cmapf_mod.o: par_mod.o
 com_mod.o: par_mod.o
 date_mod.o: par_mod.o
@@ -266,7 +273,7 @@ unc_mod.o: par_mod.o com_mod.o
 cbl_mod.o: com_mod.o par_mod.o random_mod.o
 pbl_profile_mod.o: par_mod.o qvsat_mod.o
 
-#3) 3rd level
+#3) 3rd level dependencies
 turbulence_mod.o: particle_mod.o cbl_mod.o qvsat_mod.o
 ifeq ($(etadep), "yes")
 windfields_mod.o: recompile cmapf_mod.o point_mod.o class_gribfile_mod.o date_mod.o qvsat_mod.o \
@@ -275,8 +282,7 @@ else
 windfields_mod.o: cmapf_mod.o point_mod.o class_gribfile_mod.o date_mod.o qvsat_mod.o \
 	pbl_profile_mod.o
 endif
-
-#4) 4th level
+#4) 4th level dependencies
 verttransform_mod.o: par_mod.o com_mod.o qvsat_mod.o windfields_mod.o
 settling_mod.o: windfields_mod.o
 interpol_mod.o: windfields_mod.o particle_mod.o turbulence_mod.o
@@ -308,11 +314,11 @@ txt_output_mod.o: outgrid_mod.o
 binary_output_mod.o: mean_mod.o outgrid_mod.o
 ifneq ($(ncf), no)
 receptor_mod.o: par_mod.o com_mod.o point_mod.o particle_mod.o date_mod.o \
-	windfields_mod.o receptor_netcdf_mod.o binary_output_mod.o
+        windfields_mod.o receptor_netcdf_mod.o binary_output_mod.o
 else
 receptor_mod.o: par_mod.o com_mod.o point_mod.o particle_mod.o date_mod.o \
-	windfields_mod.o binary_output_mod.o
-endif
+        windfields_mod.o binary_output_mod.o
+endif 
 ifneq ($(ncf), no)
 netcdf_output_mod.o: mean_mod.o outgrid_mod.o readoptions_mod.o drydepo_mod.o
 totals_mod.o: par_mod.o com_mod.o netcdf_output_mod.o
@@ -321,7 +327,7 @@ chemistry_mod.o: par_mod.o com_mod.o date_mod.o particle_mod.o \
 initdomain_mod.o: par_mod.o com_mod.o point_mod.o random_mod.o outgrid_mod.o \
 	initialise_mod.o totals_mod.o date_mod.o windfields_mod.o netcdf_output_mod.o
 receptor_netcdf_mod.o: par_mod.o com_mod.o point_mod.o date_mod.o \
-	windfields_mod.o netcdf_output_mod.o
+	windfields_mod.o netcdf_output_mod.o 
 emissions_mod.o: par_mod.o com_mod.o point_mod.o particle_mod.o date_mod.o \
 	netcdf_output_mod.o totals_mod.o windfields_mod.o
 endif
@@ -346,3 +352,17 @@ endif
 
 #9)
 initialise_mod.o: interpol_mod.o xmass_mod.o output_mod.o turbulence_mod.o
+
+#10)
+ifneq ($(ncf), no)
+timemanager_mod.o: advance_mod.o conv_mod.o plume_mod.o getfields_mod.o restart_mod.o \
+	initialise_mod.o chemistry_mod.o initdomain_mod.o receptor_mod.o \
+	emissions_mod.o totals_mod.o
+else
+timemanager_mod.o: advance_mod.o conv_mod.o plume_mod.o getfields_mod.o restart_mod.o \
+        initialise_mod.o receptor_mod.o
+endif
+
+
+#11) Final target
+FLEXPART.o: timemanager_mod.o gitversion

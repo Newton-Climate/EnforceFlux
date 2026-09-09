@@ -1,3 +1,4 @@
+import os
 import platform
 from pathlib import Path
 
@@ -105,8 +106,23 @@ def test_flexpart_build_plan_uses_portable_flags():
     compiler = FlexpartCompiler(repo_root=_repo_root())
     plan = compiler.plan()
 
-    assert "/opt/homebrew/include" in plan.env["CPATH"]
-    assert "/opt/homebrew/lib" in plan.env["LIBRARY_PATH"]
+    # Where the toolchain lives is platform-specific: Homebrew on macOS,
+    # module-provided prefixes on Linux/HPC. Assert the plan points at a real
+    # ecCodes rather than at one particular layout.
+    if Path("/opt/homebrew").exists():
+        assert "/opt/homebrew/include" in plan.env["CPATH"]
+        assert "/opt/homebrew/lib" in plan.env["LIBRARY_PATH"]
+    else:
+        include_dirs = [Path(p) for p in plan.env["CPATH"].split(os.pathsep) if p]
+        lib_dirs = [Path(p) for p in plan.env["LIBRARY_PATH"].split(os.pathsep) if p]
+        assert any((d / "eccodes.mod").exists() for d in include_dirs), (
+            f"no eccodes.mod in CPATH: {plan.env['CPATH']}"
+        )
+        assert any(
+            (d / f"libeccodes_f90{suffix}").exists()
+            for d in lib_dirs
+            for suffix in (".so", ".dylib", ".a")
+        ), f"no libeccodes_f90 in LIBRARY_PATH: {plan.env['LIBRARY_PATH']}"
 
     make_args = " ".join(plan.make_args)
     if platform.system() == "Darwin" and platform.machine().lower() == "arm64":

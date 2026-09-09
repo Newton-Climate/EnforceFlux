@@ -43,17 +43,23 @@ def _make_template(tmp_path: Path) -> Path:
 
 
 def _find_microhh_binary() -> Path | None:
+    """Locate a MicroHH binary as an ABSOLUTE path.
+
+    The caller runs it with cwd set to a tmp case directory, so a path
+    resolved relative to the repo root would not exist by the time it is
+    executed.
+    """
     env = os.environ.get("MICROHH_BIN")
     if env and Path(env).exists():
-        return Path(env)
+        return Path(env).resolve()
     for candidate in (
         Path("microhh") / "build" / "microhh",
         Path("../microhh/build/microhh"),
     ):
         if candidate.exists():
-            return candidate
+            return candidate.resolve()
     which = shutil.which("microhh")
-    return Path(which) if which else None
+    return Path(which).resolve() if which else None
 
 
 def test_lognormal_case_roundtrip(tmp_path):
