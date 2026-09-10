@@ -1,12 +1,13 @@
 # EnforceFlux — load the Sherlock toolchain on entering the project directory.
 #
-# Source this from ~/.bashrc:
-#     [ -f "$HOME/EnforceFlux/installations/sherlock/autoenv.sh" ] \
-#         && . "$HOME/EnforceFlux/installations/sherlock/autoenv.sh"
+# Source this from ~/.bashrc; see the snippet at the bottom of this file.
 #
 # Entering the tree loads installations/sherlock/modules.sh and activates
-# .venv; leaving puts your previous module set back. Override the location by
-# exporting ENFORCEFLUX_ROOT before sourcing.
+# .venv; leaving puts your previous module set back.
+#
+# The project root is derived from THIS FILE's own location, so the checkout
+# can live anywhere and be named anything. Export ENFORCEFLUX_ROOT before
+# sourcing to override.
 #
 # Interactive shells only. ~/.bashrc is also read by non-interactive sessions,
 # and anything written to stdout there corrupts scp/sftp transfers.
@@ -15,10 +16,32 @@ case $- in
     *) return 0 2>/dev/null || exit 0 ;;
 esac
 
-: "${ENFORCEFLUX_ROOT:=$HOME/EnforceFlux}"
+# Locate the checkout from this script's own path: <root>/installations/sherlock.
+# A relative path would be wrong here — PROMPT_COMMAND runs from whatever
+# directory you happen to be in, so there is nothing stable to be relative to.
+if [ -z "${ENFORCEFLUX_ROOT:-}" ]; then
+    _efx_self="${BASH_SOURCE[0]:-$0}"
+    # Follow symlinks when the file is linked in from elsewhere.
+    if command -v readlink >/dev/null 2>&1; then
+        _efx_resolved="$(readlink -f "$_efx_self" 2>/dev/null)" && [ -n "$_efx_resolved" ] \
+            && _efx_self="$_efx_resolved"
+    fi
+    ENFORCEFLUX_ROOT="$(cd -P "$(dirname "$_efx_self")/../.." >/dev/null 2>&1 && pwd)"
+    unset _efx_self _efx_resolved
+fi
 export ENFORCEFLUX_ROOT
 
+# Refuse to guess: without a real checkout the hook would silently do nothing.
+if [ ! -f "$ENFORCEFLUX_ROOT/installations/sherlock/modules.sh" ]; then
+    echo "autoenv.sh: cannot locate the EnforceFlux checkout (tried '$ENFORCEFLUX_ROOT');" \
+         "export ENFORCEFLUX_ROOT and re-source." >&2
+    return 0 2>/dev/null || exit 0
+fi
+
 _efx_in_project() {
+    # Bail on an empty root: the case pattern would collapse to /* and match
+    # every directory on the system.
+    [ -n "${ENFORCEFLUX_ROOT:-}" ] || return 1
     case "$PWD/" in
         "$ENFORCEFLUX_ROOT"/*) return 0 ;;
         *) return 1 ;;
@@ -27,9 +50,8 @@ _efx_in_project() {
 
 _efx_load() {
     [ -n "${_EFX_ACTIVE:-}" ] && return 0
-    if [ ! -f "$ENFORCEFLUX_ROOT/installations/sherlock/modules.sh" ]; then
-        return 0
-    fi
+    # Re-check at call time: ENFORCEFLUX_ROOT can be changed after sourcing.
+    [ -f "$ENFORCEFLUX_ROOT/installations/sherlock/modules.sh" ] || return 0
     # modules.sh starts with `module reset`, so record what was loaded first —
     # otherwise leaving the tree would strand you without your usual stack.
     _EFX_SAVED_MODULES="$(module -t list 2>&1 | grep -v ':$' | grep -v '^No modules' | tr '\n' ' ')"
@@ -81,3 +103,14 @@ case ";${PROMPT_COMMAND:-};" in
     *";_efx_auto;"*) ;;
     *) PROMPT_COMMAND="_efx_auto;${PROMPT_COMMAND:-}" ;;
 esac
+
+# ── ~/.bashrc snippet ────────────────────────────────────────────────────────
+# Something has to know where the checkout is; everything past that point is
+# derived. Set ENFORCEFLUX_ROOT if yours is not in one of the usual spots:
+#
+#   for _d in "${ENFORCEFLUX_ROOT:-}" "$HOME/EnforceFlux" \
+#             "$HOME/projects/EnforceFlux" "$GROUP_HOME/EnforceFlux"; do
+#       [ -n "$_d" ] && [ -f "$_d/installations/sherlock/autoenv.sh" ] && {
+#           . "$_d/installations/sherlock/autoenv.sh"; break; }
+#   done
+#   unset _d
