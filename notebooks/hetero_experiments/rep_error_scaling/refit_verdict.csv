@@ -1,0 +1,9 @@
+geometry,n,distorted,flags
+open_path,1,True,R1 beta shift +0.27 > 0.24; R1 beta CI reaches 1; R2 alpha shift +0.29 > 0.28; R3 beta shift -0.32 > 0.24
+open_path,2,True,R1 beta shift +0.27 > 0.25; R1 beta CI reaches 1; R2 alpha shift +0.29 > 0.27; R3 beta shift -0.33 > 0.25
+open_path,3,True,R1 beta shift +0.27 > 0.25; R1 beta CI reaches 1; R2 alpha shift +0.29 > 0.28; R3 beta shift -0.31 > 0.25
+open_path,4,True,R1 beta shift +0.27 > 0.22; R1 beta CI reaches 1; R2 alpha shift +0.28 > 0.27; R3 beta shift -0.33 > 0.22
+point,1,True,R3 beta shift -0.28 > 0.26
+point,2,True,R1 beta shift +0.26 > 0.23; R2 alpha shift +0.29 > 0.27
+point,3,True,R1 beta shift +0.27 > 0.25; R1 beta CI reaches 1; R3 beta shift -0.27 > 0.25
+point,4,True,R1 beta shift +0.26 > 0.22; R1 beta CI reaches 1; R2 alpha shift +0.28 > 0.27; R3 beta shift -0.34 > 0.22

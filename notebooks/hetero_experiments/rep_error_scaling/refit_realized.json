@@ -1,0 +1,5 @@
+{
+  "n_distorted_designs": 8,
+  "n_designs": 8,
+  "rule": "alpha/beta shift > original bootstrap 95% half-width, beta CI reaching 1, or M2 LOCO within 10% of best"
+}
