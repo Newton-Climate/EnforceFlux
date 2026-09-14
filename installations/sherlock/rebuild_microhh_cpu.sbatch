@@ -22,7 +22,12 @@ fi
 # Always configure fresh: CMake keeps CMAKE_<LANG>_FLAGS_RELEASE in its cache,
 # so a changed -march in sherlock.cmake is otherwise silently ignored.
 rm -rf microhh/build
-make install-microhh-sherlock JOBS=8
+# Single precision, matching the local build and the configs' `precision:
+# float32`; a double build writes 8-byte slices that EnforceFlux misreads.
+make install-microhh-sherlock JOBS=8 MICROHH_CMAKE_FLAGS="-DUSEMPI=TRUE -DUSESP=TRUE"
+if ! grep -q '^USESP:.*=TRUE' microhh/build/CMakeCache.txt; then
+    echo "FAIL: not a single-precision build"; exit 1
+fi
 
 echo "=== linkage"
 ldd microhh/build/microhh | grep -E "libmpi\.|open-rte|open-pal|pnetcdf"
