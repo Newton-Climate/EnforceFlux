@@ -66,7 +66,10 @@ CASE_SUFFIX = Path("dispersion/concentration_microhh/microhh_case")
 DONOR = RUNS / RUN_NAME / CASE_SUFFIX
 DONOR_TIME_S = int(os.environ.get("EFX_TAGGED_DONOR_T", "1800"))
 # A restarted nature run supplies the operator's grid, forcing, and timing.
-TEMPLATE = RUNS / RUN_NAME / CASE_SUFFIX
+# Override with EFX_TAGGED_TEMPLATE (a run name) when the donor's own endtime
+# stops short of the observation window — the template's endtime is the
+# operator's.
+TEMPLATE = RUNS / os.environ.get("EFX_TAGGED_TEMPLATE", RUN_NAME) / CASE_SUFFIX
 
 OUT = RUNS / f"{RUN_NAME}_tagged_operator"
 CASE_DIR = OUT / "microhh_case"

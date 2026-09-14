@@ -35,6 +35,11 @@ with_ranks() {
 # The tagged operator follows whichever donor config was chosen (80 m or 40 m).
 EFX_TAGGED_RUN=$(sed -nE 's/^  name: ([^ #]+).*/\1/p' "$DONOR_CFG" | head -1)
 export EFX_TAGGED_RUN
+# Template = the nature run, not the donor: the tagged case inherits the
+# template's endtime, and the donor stops at 5400 s while the nature run's
+# observation window runs 3600-6300 s.
+EFX_TAGGED_TEMPLATE=$(sed -nE 's/^  name: ([^ #]+).*/\1/p' "$NATURE_CFG" | head -1)
+export EFX_TAGGED_TEMPLATE
 export EFX_TAGGED_DONOR_T=3600
 export EFX_TAGGED_WORKERS="$N"
 # Nature runs share the donor's prefix up to the L/cv label; the donor itself
