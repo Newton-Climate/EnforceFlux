@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -40,23 +42,40 @@ from enforceflux.microhh.tagged_operator import (
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = ROOT / "runs"
-NATURE_GLOB = "source_heterogeneity_les_rice_paddy_*_wind3_surface"
+
+# The nature run this operator is built from: the 2.5 km domain / centered 2 km
+# patch case defined in configs/hetero_patch_2km_centered/dispersion.yaml. Run it
+# first with `enforceflux dispersion --config .../dispersion.yaml`; its
+# fully-filled patch is what makes every patch cell tagged, so the operator can
+# then evaluate any source distribution over the patch.
+#
+# On a cluster, override with EFX_TAGGED_RUN / EFX_TAGGED_WORKERS /
+# EFX_TAGGED_DONOR_T / EFX_MICROHH rather than editing this file.
+RUN_NAME = os.environ.get("EFX_TAGGED_RUN", "hetero_patch_2km_centered")
+NATURE_GLOB = os.environ.get("EFX_TAGGED_NATURE_GLOB", RUN_NAME)
 CASE_SUFFIX = Path("dispersion/concentration_microhh/microhh_case")
 
-# The spinup run every realization warm-starts from, and its restart stamp.
-DONOR = RUNS / "source_heterogeneity_les_rice_paddy_l200_cv2p0_wind3_surface" / CASE_SUFFIX
-DONOR_TIME_S = 3600
+# Donor and template are the same self-contained nature run: it supplies both
+# the shared turbulent flow to warm-start from (DONOR) and the grid, forcing,
+# timing, and surface footprint (TEMPLATE).
+#
+# DONOR_TIME_S is the restart stamp to warm-start from. It must match a restart
+# the nature run actually wrote (a `*.<stamp>.nc` / `time.<stamp>` in the case
+# dir) — confirm it after running the dispersion stage; with spinup_seconds:1800
+# the handoff is at the end of spinup.
+DONOR = RUNS / RUN_NAME / CASE_SUFFIX
+DONOR_TIME_S = int(os.environ.get("EFX_TAGGED_DONOR_T", "1800"))
 # A restarted nature run supplies the operator's grid, forcing, and timing.
-TEMPLATE = RUNS / "source_heterogeneity_les_rice_paddy_l100_cv1p0_wind3_surface" / CASE_SUFFIX
+TEMPLATE = RUNS / RUN_NAME / CASE_SUFFIX
 
-OUT = RUNS / "source_heterogeneity_les_tagged_operator"
+OUT = RUNS / f"{RUN_NAME}_tagged_operator"
 CASE_DIR = OUT / "microhh_case"
 SPEC_PATH = OUT / "tagged_case.json"
 OPERATOR_PATH = OUT / "operator.npz"
 REPORT_PATH = OUT / "validation.json"
 
-EXECUTABLE = ROOT / "microhh" / "build" / "microhh"
-NUM_WORKERS = 4
+EXECUTABLE = Path(os.environ.get("EFX_MICROHH", ROOT / "microhh" / "build" / "microhh"))
+NUM_WORKERS = int(os.environ.get("EFX_TAGGED_WORKERS", "4"))
 # The 2 m measurement plane, as MicroHH stamps it into cross-section filenames.
 LEVEL_INDEX = 3
 SCALAR = "ch4"
@@ -97,8 +116,30 @@ def stage_build() -> None:
     print(f"reference kinematic flux {case.reference_kinematic_flux:.6e}")
 
 
+def _set_decomposition(case: TaggedCase, num_workers: int) -> None:
+    """Rewrite npx/npy so the tagged case can run on a different rank count.
+
+    The ini is copied from the template, so it carries the template's
+    decomposition; MicroHH aborts if that disagrees with the launched ranks.
+    Restart files are global, so the decomposition is free to change.
+    """
+    from types import SimpleNamespace
+
+    from enforceflux.microhh.sim_config import decompose_workers
+
+    itot, jtot, ktot = case.grid
+    npx, npy = decompose_workers(num_workers, SimpleNamespace(itot=itot, jtot=jtot, ktot=ktot))
+    ini = case.case_dir / f"{case.case_name}.ini"
+    text = ini.read_text()
+    text = re.sub(r"(?m)^npx\s*=.*$", f"npx={npx}", text)
+    text = re.sub(r"(?m)^npy\s*=.*$", f"npy={npy}", text)
+    ini.write_text(text)
+    print(f"decomposition {num_workers} ranks -> npx={npx}, npy={npy}")
+
+
 def stage_run() -> None:
     case = _load_spec()
+    _set_decomposition(case, NUM_WORKERS)
     run_tagged_case(
         case,
         executable=EXECUTABLE,

@@ -26,7 +26,9 @@ endif()
 #   MICROHH_ARCH_FLAG=-march=skylake-avx512 make install-microhh-sherlock
 set(NATIVE_ARCH_FLAG "$ENV{MICROHH_ARCH_FLAG}")
 if(NOT NATIVE_ARCH_FLAG)
-    set(NATIVE_ARCH_FLAG "-march=x86-64-v3")
+    # haswell, not x86-64-v3: openmpi/4.1.2 (pinned in modules.sh) swaps in
+    # gcc/10.1.0, which predates the x86-64-v3 name. Same AVX2 baseline.
+    set(NATIVE_ARCH_FLAG "-march=haswell")
 endif()
 
 set(USER_CXX_FLAGS         "-std=c++17")

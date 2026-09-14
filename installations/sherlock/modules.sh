@@ -21,7 +21,11 @@
 # CentOS 7 ships binutils 2.27, whose assembler predates endbr64; gcc 12
 # emits CET instructions by default, so source builds fail without this.
 : "${BINUTILS_MOD:=binutils}"
-: "${OPENMPI_MOD:=openmpi}"
+# Pinned: fftw/3.3.10 and netcdf-c/4.9.0 (via pnetcdf) are built against
+# openmpi/4.1.2. The default openmpi (5.0.5) shares the libmpi.so.40 soname, so
+# a MicroHH built with it loads 4.1.2's libmpi under 5.0.5's launcher and every
+# rank hangs forever in `init`.
+: "${OPENMPI_MOD:=openmpi/4.1.2}"
 : "${CMAKE_MOD:=cmake}"
 : "${HDF5_MOD:=hdf5}"
 : "${NETCDF_C_MOD:=netcdf-c}"
@@ -29,7 +33,9 @@
 : "${FFTW_MOD:=fftw}"
 : "${ECCODES_MOD:=eccodes}"          # if missing on your tree: unset ECCODES_MOD
 : "${PYTHON_MOD:=python/3.12.1}"
-: "${BOOST_MOD:=boost}"              # MicroHH build-dep
+# MicroHH build-dep (headers only). Pinned because boost >=1.87 depends_on
+# openmpi/5.0 and silently swaps out the openmpi/4.1.2 pinned above.
+: "${BOOST_MOD:=boost/1.79.0}"
 : "${GIT_MOD:=git}"
 
 # ── Load Lmod stack ──────────────────────────────────────────────────────────
@@ -76,9 +82,12 @@ _prefix_from_module() {
         return
     fi
     # Fall back to `module show` output → look for "prepend_path PATH <prefix>/bin"
+    # `|| true`: grep -m1 closes the pipe early, so `module show` dies of
+    # SIGPIPE (141); a caller running `set -eo pipefail` would abort on it.
     module show "$mod" 2>&1 \
         | grep -m1 'prepend_path("PATH"' \
-        | sed -E 's/.*prepend_path\("PATH",[[:space:]]*"([^"]*)".*/\1/; s#/bin/?$##'
+        | sed -E 's/.*prepend_path\("PATH",[[:space:]]*"([^"]*)".*/\1/; s#/bin/?$##' \
+        || true
 }
 
 export ECCODES_PREFIX="${ECCODES_PREFIX:-$(_prefix_from_module "$ECCODES_MOD" ECCODES_ROOT)}"
@@ -98,6 +107,15 @@ export FFTW_PREFIX="${FFTW_PREFIX:-$(_prefix_from_module "$FFTW_MOD" FFTW_ROOT)}
 export CPATH="${ECCODES_PREFIX:+$ECCODES_PREFIX/include:}${NETCDF_PREFIX:+$NETCDF_PREFIX/include:}${NETCDFF_INCDIR:+$NETCDFF_INCDIR:}${HDF5_PREFIX:+$HDF5_PREFIX/include:}${FFTW_PREFIX:+$FFTW_PREFIX/include:}${CPATH}"
 export LIBRARY_PATH="${ECCODES_PREFIX:+$ECCODES_PREFIX/lib:}${NETCDF_PREFIX:+$NETCDF_PREFIX/lib:}${NETCDFF_LIBDIR:+$NETCDFF_LIBDIR:}${HDF5_PREFIX:+$HDF5_PREFIX/lib:}${FFTW_PREFIX:+$FFTW_PREFIX/lib:}${LIBRARY_PATH}"
 export LD_LIBRARY_PATH="${ECCODES_PREFIX:+$ECCODES_PREFIX/lib:}${NETCDF_PREFIX:+$NETCDF_PREFIX/lib:}${NETCDFF_LIBDIR:+$NETCDFF_LIBDIR:}${HDF5_PREFIX:+$HDF5_PREFIX/lib:}${FFTW_PREFIX:+$FFTW_PREFIX/lib:}${LD_LIBRARY_PATH}"
+
+# openmpi/4.1.2 swaps in gcc/10.1.0, whose libstdc++ lacks GLIBCXX_3.4.29, but
+# the user-built eccodes in ~/opt was compiled with gcc 12 and needs it — so
+# the Python ERA5 reader fails to import eccodes. gcc 12's libstdc++ is
+# backward compatible with the gcc-10-built MicroHH, so put it first.
+_GCC12_LIB=/share/software/user/open/gcc/12.4.0/lib64
+if [ -d "$_GCC12_LIB" ]; then
+    export LD_LIBRARY_PATH="$_GCC12_LIB:${LD_LIBRARY_PATH}"
+fi
 
 # NOTE: $SHERLOCK is a readonly system variable on the cluster (it holds
 # the Sherlock generation, e.g. 2), so it cannot double as our own flag.
