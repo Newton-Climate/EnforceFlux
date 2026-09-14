@@ -54,6 +54,19 @@ for s in $STAGES; do
         donor)        .venv/bin/enforceflux dispersion --config "$(with_ranks "$DONOR_CFG")" ;;
         nature)       .venv/bin/enforceflux dispersion --config "$(with_ranks "$NATURE_CFG")" ;;
         tagged_build) .venv/bin/python "$TAGGED" build ;;
+        tagged_bench)
+            # Time BENCH_S simulated seconds of the real tagged case to project
+            # the full run, then discard it so tagged_build starts clean.
+            out="runs/${EFX_TAGGED_RUN}_tagged_operator"
+            case "$out" in runs/source_heterogeneity_*_tagged_operator) ;;
+                *) echo "refusing bench on '$out'"; exit 2 ;; esac
+            .venv/bin/python "$TAGGED" build
+            ini=$(ls "$out"/microhh_case/*.ini)
+            sed -i -E "s/^endtime=.*/endtime=$(( EFX_TAGGED_DONOR_T + ${BENCH_S:-60} ))/" "$ini"
+            .venv/bin/python "$TAGGED" run
+            echo "BENCH ranks=$N tracers=$(grep -m1 '^slist=' "$ini" | tr ',' '\n' | wc -l)"
+            awk 'NR>2 && $1-p==50 {print "BENCH_BLOCK_S", $3, "DT", $4} {p=$1}' "$out"/microhh_case/*.out | tail -5
+            rm -rf "$out" ;;
         tagged_run)   .venv/bin/python "$TAGGED" run ;;
         compare)      .venv/bin/python "$TAGGED" compare ;;
         *) echo "unknown stage $s"; exit 2 ;;
