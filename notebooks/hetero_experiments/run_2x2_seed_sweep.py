@@ -9,7 +9,7 @@ cell is run at eight emission seeds.
 Both bLS operators are emission-field independent — they depend on receptor
 geometry and turbulence, neither of which varies with the seed — so the
 hour-long time-resolved build is done once and copied, exactly as
-``run_sweeps.py`` already does for the window-averaged one.
+``configs/hetero_rice_paddy_test/sweep.py`` already does for the window-averaged one.
 """
 from __future__ import annotations
 

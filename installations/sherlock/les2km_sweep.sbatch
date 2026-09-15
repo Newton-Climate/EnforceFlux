@@ -3,7 +3,7 @@
 #
 # Prerequisites (see configs/hetero_rice_paddy_2km/):
 #   - the tagged operator from les2km_pipeline.sbatch (operator.npz),
-#   - generated configs (generate_sweeps.py, needs bls_met.json),
+#   - bls_met.json (derive_bls_met.py); sweep.py renders every config from it,
 #   - the 16 bLS donor runs (*_l100_cv0p5_s0_wind3_*_gp), built where R and
 #     bLSmodelR exist and copied into runs/.
 # Tags are split across NSHARDS parallel processes; stages resume on rerun.
@@ -33,7 +33,7 @@ rc=0
 for mode in $MODES; do
     pids=()
     for k in $(seq 0 $((NSHARDS - 1))); do
-        python run_sweeps.py "$mode" --shard "$k" --nshards "$NSHARDS" \
+        python sweep.py "$mode" --shard "$k" --nshards "$NSHARDS" \
             > "$HOME/efx_logs/sweep2km_${SLURM_JOB_ID}_${mode#--}_$k.log" 2>&1 &
         pids+=($!)
     done
