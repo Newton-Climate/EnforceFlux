@@ -54,3 +54,44 @@ node_modules/
 .idea/
 .vscode/
 .codex/
+
+# Large binary and data formats. Model output, met files and archives belong
+# in runs/, data/ or on scratch, not in git — the analysis scripts regenerate
+# every one of them from those. Four small .npz tables under
+# notebooks/hetero_experiments/ predate this rule and stay tracked; add a new
+# one with `git add -f` only if it is small and cannot be regenerated.
+*.nc
+*.nc4
+*.h5
+*.hdf5
+*.zarr/
+*.grib
+*.grib2
+*.grb
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.mat
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.bz2
+*.xz
+*.7z
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.mp4
+*.mov
+*.webm
+*.so
+*.a
+*.o
+*.mod
+
+# Presentation build scratch (rendered decks and their staging directories)
+.codex-presentation-build/
