@@ -1,0 +1,18 @@
+gate,passed,value
+grid_identical_all_72_fields,True,"nx=25 ny=25 dx=40.0 origin=(-500.0,-500.0)"
+fields_regenerated_by_generator_max_rel_err,True,0.0
+jacobian_constant_within_each_design,True,8
+dw_dot_phi_reproduces_e_pure_seeds0_7_max_abs,True,1.1102230246251565e-15
+mc_cholesky_fallback_draws_L100_cv0.5,True,0/4000
+mc_cholesky_fallback_draws_L100_cv1,True,0/4000
+mc_cholesky_fallback_draws_L100_cv2,True,0/4000
+mc_cholesky_fallback_draws_L250_cv0.5,True,0/4000
+mc_cholesky_fallback_draws_L250_cv1,True,0/4000
+mc_cholesky_fallback_draws_L250_cv2,True,0/4000
+mc_cholesky_fallback_draws_L500_cv0.5,True,4000/4000
+mc_cholesky_fallback_draws_L500_cv1,True,4000/4000
+mc_cholesky_fallback_draws_L500_cv2,True,4000/4000
+info_corr_e_pure_vs_e_transport_all576,True,-0.5198
+info_pit_pure_mc_ks_stat_p,True,D=0.123 p=4.83e-08
+pooled_point_sd_by_CV_matches_published,True,3.094493528088549e-08
+pooled_point_mae_by_L_m_matches_published,True,2.6088426308135126e-08

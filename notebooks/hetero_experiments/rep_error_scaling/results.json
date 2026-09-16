@@ -1,0 +1,81 @@
+{
+  "primary_subset": {
+    "geometry": "point",
+    "n": 1
+  },
+  "bootstrap_M3_point_n1": {
+    "CV": {
+      "lo": 0.4598252701401176,
+      "med": 0.7756216668132501,
+      "hi": 1.0602876342145717,
+      "excludes_1": false
+    },
+    "l_star": {
+      "lo": 0.14236453593996234,
+      "med": 0.3790530644729799,
+      "hi": 0.6967059786080332,
+      "excludes_1": true
+    }
+  },
+  "pooled_footprint_test": {
+    "l_star__single_intercept": {
+      "rmse_log": 0.2520076602972271,
+      "beta_x": 0.4851800246138544,
+      "alpha_CV": 0.8131202125662133,
+      "n_params": 3
+    },
+    "l_star__design_intercepts": {
+      "rmse_log": 0.1527826709997525,
+      "beta_x": 0.48518002461385346,
+      "alpha_CV": 0.8131202125662144,
+      "n_params": 10
+    },
+    "Pi__single_intercept": {
+      "rmse_log": 0.24061151547344153,
+      "beta_x": 0.46383302088576406,
+      "alpha_CV": 0.8131202125662136,
+      "n_params": 3
+    },
+    "Pi__design_intercepts": {
+      "rmse_log": 0.15278267099975257,
+      "beta_x": 0.4851800246138538,
+      "alpha_CV": 0.8131202125662135,
+      "n_params": 10
+    },
+    "saturating_Leff": {
+      "c": 0.0,
+      "rmse_log": 0.2520076602972271,
+      "alpha_CV": 0.8131202125662133,
+      "beta_Leff": 0.4851800246138544,
+      "a": 0.24532178719127842,
+      "n_params": 4
+    }
+  },
+  "n_dependence": [
+    {
+      "geometry": "open_path",
+      "gamma_n": -0.037817104789606176,
+      "gamma_n_se": 0.05267434332931797,
+      "gamma_lo": -0.1410588177150694,
+      "gamma_hi": 0.06542460813585704,
+      "sqrt_n_predicts": false,
+      "zero_in_ci": true,
+      "alpha_CV": 0.82823594652001,
+      "beta_L": 0.5356261841716957
+    },
+    {
+      "geometry": "point",
+      "gamma_n": -0.48859001701200694,
+      "gamma_n_se": 0.04884178499852572,
+      "gamma_lo": -0.5843199156091173,
+      "gamma_hi": -0.39286011841489654,
+      "sqrt_n_predicts": true,
+      "zero_in_ci": false,
+      "alpha_CV": 0.7980044786124156,
+      "beta_L": 0.43473386505601197
+    }
+  ],
+  "n_conditions": 72,
+  "n_inversions": 576,
+  "bias_significant_conditions": 10
+}

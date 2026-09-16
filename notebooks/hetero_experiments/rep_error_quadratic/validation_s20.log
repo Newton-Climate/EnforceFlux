@@ -1,0 +1,37 @@
+                                            gate  passed                                      value
+rebuilt_e_signed_matches_inversions_csv_seeds0_7    True                                        0.0
+                   grid_identical_all_180_fields    True nx=25 ny=25 dx=40.0 origin=(-500.0,-500.0)
+     fields_regenerated_by_generator_max_rel_err    True                                        0.0
+            jacobian_constant_within_each_design    True                                          8
+   dw_dot_phi_reproduces_e_pure_seeds0_7_max_abs    True                                        0.0
+           mc_cholesky_fallback_draws_L100_cv0.5    True                                     0/4000
+             mc_cholesky_fallback_draws_L100_cv1    True                                     0/4000
+             mc_cholesky_fallback_draws_L100_cv2    True                                     0/4000
+           mc_cholesky_fallback_draws_L250_cv0.5    True                                     0/4000
+             mc_cholesky_fallback_draws_L250_cv1    True                                     0/4000
+             mc_cholesky_fallback_draws_L250_cv2    True                                     0/4000
+           mc_cholesky_fallback_draws_L500_cv0.5    True                                  4000/4000
+             mc_cholesky_fallback_draws_L500_cv1    True                                  4000/4000
+             mc_cholesky_fallback_draws_L500_cv2    True                                  4000/4000
+         info_corr_e_pure_vs_e_transport_all1440    True                                    -0.6242
+                      info_pit_pure_mc_ks_stat_p    True                         D=0.033 p=7.93e-02
+ geometry pooled_by  value  n_runs  sd_emp_total  mae_emp_total  sd_emp_pure  mae_emp_pure  sd_pred_loglinear  mae_pred_loglinear  sd_pred_lognormal  mae_pred_lognormal  sd_pred_mc  mae_pred_mc
+    point        CV    0.5     240        0.1090         0.0959       0.1334        0.1031             0.1374              0.1037             0.1440              0.1086      0.1412       0.1045
+    point        CV    1.0     240        0.1785         0.1437       0.2374        0.1817             0.2422              0.1828             0.2816              0.2119      0.2573       0.1841
+    point        CV    2.0     240        0.2662         0.2080       0.3838        0.2812             0.3690              0.2785             0.5344              0.4004      0.4154       0.2797
+    point       L_m  100.0     240        0.1517         0.1226       0.2706        0.1803             0.2378              0.1673             0.2941              0.2007      0.2721       0.1735
+    point       L_m  250.0     240        0.2045         0.1554       0.2989        0.2014             0.2836              0.2004             0.3756              0.2537      0.3118       0.2001
+    point       L_m  500.0     240        0.2230         0.1697       0.2427        0.1843             0.2771              0.1973             0.3975              0.2665      0.2958       0.1947
+open_path        CV    0.5     240        0.0853         0.0694       0.0962        0.0769             0.1073              0.0842             0.1116              0.0875      0.1092       0.0847
+open_path        CV    1.0     240        0.1469         0.1147       0.1635        0.1321             0.1892              0.1484             0.2144              0.1674      0.1954       0.1476
+open_path        CV    2.0     240        0.2230         0.1740       0.2443        0.1986             0.2883              0.2262             0.3921              0.3039      0.3062       0.2214
+open_path       L_m  100.0     240        0.1200         0.0906       0.1267        0.0966             0.1539              0.1147             0.1793              0.1305      0.1714       0.1179
+open_path       L_m  250.0     240        0.1677         0.1254       0.1836        0.1455             0.2240              0.1669             0.2764              0.1994      0.2330       0.1635
+open_path       L_m  500.0     240        0.1898         0.1421       0.2141        0.1655             0.2378              0.1773             0.3219              0.2289      0.2455       0.1722
+target   variant  pearson_r_variance  pearson_r_sd  pearson_r_log_sd  spearman_rho_sd  rmse_sd_pp  rmse_variance_pp2  rmse_log10_ratio  median_ratio_pred_over_emp  frac_pred_in_emp_chi2_95ci   z_sd  z_frac_abs_lt1  z_frac_abs_lt2  frac_emp_in_mc_m_95band  median_ratio_emp_over_mc_m_median
+ total loglinear              0.9500        0.9644            0.9727           0.9601      6.3725           414.8398            0.1261                      1.3032                      0.8194 0.8007          0.7708          0.9806                   0.9028                             0.7745
+ total lognormal              0.9664        0.9727            0.9777           0.9700     14.0107          1255.0933            0.1994                      1.5093                      0.4167 0.6967          0.8465          0.9889                   0.9028                             0.7745
+ total        mc              0.9246        0.9473            0.9631           0.9443      8.4769           596.1842            0.1530                      1.3549                      0.7222 0.7629          0.8014          0.9847                   0.9028                             0.7745
+  pure loglinear              0.9337        0.9566            0.9728           0.9654      3.5467           281.4274            0.0596                      1.0774                      0.9861 0.9298          0.7007          0.9812                   1.0000                             0.9452
+  pure lognormal              0.8744        0.9283            0.9617           0.9525      9.7368           918.6191            0.1248                      1.2357                      0.7639 0.7999          0.7958          0.9917                   1.0000                             0.9452
+  pure        mc              0.9483        0.9643            0.9746           0.9612      4.0706           274.0968            0.0732                      1.1349                      1.0000 0.8766          0.7340          0.9833                   1.0000                             0.9452

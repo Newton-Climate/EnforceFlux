@@ -1,0 +1,2 @@
+state_name,x_prior,x_posterior,posterior_sigma,prior_sigma,dfs_per_element,prior_influence_per_element
+Q_total,0.0000e+00,0.0271143,0.00770761,1,0.999941,5.9407e-05

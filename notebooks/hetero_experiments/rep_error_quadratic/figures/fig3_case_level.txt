@@ -1,0 +1,53 @@
+Three panels testing the prediction inversion by inversion (576 inversions, 8 seeds). Left: normal QQ plot of each error divided by its condition's predicted SD, against a 1:1 line; SD of z is 0.75 (total, log-linear) and 0.79 (pure, Monte Carlo). Middle: histogram of where each stored field's perfect-transport error falls in the generator's own distribution; a flat histogram means typical draws (Kolmogorov-Smirnov D = 0.12, p = 5e-08). Right: per-condition SD of z against L for each CV, where 1 marks a calibrated prediction.
+
+panel,series,normal_quantile,z_quantile
+qq,Total / log-linear,-2.576,-1.476
+qq,Total / log-linear,-1.6,-0.8305
+qq,Total / log-linear,-1.256,-0.717
+qq,Total / log-linear,-1.018,-0.6166
+qq,Total / log-linear,-0.8274,-0.5383
+qq,Total / log-linear,-0.6628,-0.4538
+qq,Total / log-linear,-0.5144,-0.3857
+qq,Total / log-linear,-0.3766,-0.3101
+qq,Total / log-linear,-0.2456,-0.228
+qq,Total / log-linear,-0.1187,-0.1097
+qq,Total / log-linear,0.006235,0.01331
+qq,Total / log-linear,0.1313,0.08356
+qq,Total / log-linear,0.2585,0.1621
+qq,Total / log-linear,0.39,0.2825
+qq,Total / log-linear,0.5287,0.4013
+qq,Total / log-linear,0.6784,0.5016
+qq,Total / log-linear,0.8451,0.6942
+qq,Total / log-linear,1.04,0.85
+qq,Total / log-linear,1.284,1.066
+qq,Total / log-linear,1.647,1.505
+qq,Pure / Monte Carlo,-2.576,-1.599
+qq,Pure / Monte Carlo,-1.6,-1.162
+qq,Pure / Monte Carlo,-1.256,-0.981
+qq,Pure / Monte Carlo,-1.018,-0.8692
+qq,Pure / Monte Carlo,-0.8274,-0.8074
+qq,Pure / Monte Carlo,-0.6628,-0.7291
+qq,Pure / Monte Carlo,-0.5144,-0.6749
+qq,Pure / Monte Carlo,-0.3766,-0.6183
+qq,Pure / Monte Carlo,-0.2456,-0.5405
+qq,Pure / Monte Carlo,-0.1187,-0.4065
+qq,Pure / Monte Carlo,0.006235,-0.2958
+qq,Pure / Monte Carlo,0.1313,-0.2202
+qq,Pure / Monte Carlo,0.2585,-0.1558
+qq,Pure / Monte Carlo,0.39,-0.04796
+qq,Pure / Monte Carlo,0.5287,0.06073
+qq,Pure / Monte Carlo,0.6784,0.2501
+qq,Pure / Monte Carlo,0.8451,0.3723
+qq,Pure / Monte Carlo,1.04,0.5053
+qq,Pure / Monte Carlo,1.284,1.012
+qq,Pure / Monte Carlo,1.647,1.447
+pit,count,0,49
+pit,count,0.1,72
+pit,count,0.2,96
+pit,count,0.3,59
+pit,count,0.4,77
+pit,count,0.5,58
+pit,count,0.6,56
+pit,count,0.7,31
+pit,count,0.8,39
+pit,count,0.9,39

@@ -1,0 +1,17 @@
+gate,passed,value
+rebuilt_e_signed_matches_inversions_csv_seeds0_7,True,1.1102230246251565e-16
+grid_identical_all_180_fields,True,"nx=25 ny=25 dx=40.0 origin=(-500.0,-500.0)"
+fields_regenerated_by_generator_max_rel_err,True,0.0
+jacobian_constant_within_each_design,True,8
+dw_dot_phi_reproduces_e_pure_seeds0_7_max_abs,True,1.1102230246251565e-15
+mc_cholesky_fallback_draws_L100_cv0.5,True,0/4000
+mc_cholesky_fallback_draws_L100_cv1,True,0/4000
+mc_cholesky_fallback_draws_L100_cv2,True,0/4000
+mc_cholesky_fallback_draws_L250_cv0.5,True,0/4000
+mc_cholesky_fallback_draws_L250_cv1,True,0/4000
+mc_cholesky_fallback_draws_L250_cv2,True,0/4000
+mc_cholesky_fallback_draws_L500_cv0.5,True,4000/4000
+mc_cholesky_fallback_draws_L500_cv1,True,4000/4000
+mc_cholesky_fallback_draws_L500_cv2,True,4000/4000
+info_corr_e_pure_vs_e_transport_all1440,True,-0.6242
+info_pit_pure_mc_ks_stat_p,True,D=0.033 p=7.93e-02

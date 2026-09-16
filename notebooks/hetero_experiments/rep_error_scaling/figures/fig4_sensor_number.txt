@@ -1,0 +1,22 @@
+Figure 4. Sensor-number dependence. Panels A and B plot sigma_rep in percent
+against H = CV*L/sqrt(A) on log-log axes for n = 1 to 4, separately for point
+sensors and open paths; increasing n is drawn with increasing colour intensity
+and a different marker. The nine conditions collapse onto only six distinct
+values of H (CV*L is degenerate for 0.5x500, 1.0x250 and for 1.0x500, 2.0x250),
+which is why the curves zig-zag rather than rise monotonically -- itself a
+visible symptom of the collapse failing. Panel C shows sigma_rep averaged over
+CV and L against n, with a 1/sqrt(n) reference curve anchored at the n = 1
+point-sensor value.
+
+Adding log n to the scaling gives an exponent of -0.489 (95% CI -0.584 to
+-0.393) for point sensors, consistent with the 1/sqrt(n) value of -0.5, and
+-0.038 (95% CI -0.141 to +0.065) for open paths, consistent with zero. The
+open-path curves for n = 1 to 4 lie almost on top of one another. This is a
+consequence of the experimental design: total open-path length is held at
+1000 m, so n = 1 is one 1000 m path and n = 4 is four 250 m paths covering the
+same ground. Subdividing a fixed path buys nothing; adding independent point
+sensors buys 1/sqrt(n).
+
+geometry,gamma_n,gamma_lo,gamma_hi,alpha_CV,beta_L
+open_path,-0.038,-0.141,0.065,0.828,0.536
+point,-0.489,-0.584,-0.393,0.798,0.435

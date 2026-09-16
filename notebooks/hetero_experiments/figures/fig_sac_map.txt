@@ -1,0 +1,1 @@
+A map of the Sacramento Valley showing implied rice methane emission factor per 0.1 degree grid cell in kilograms per hectare per year, on a cividis colour scale with a labelled colourbar. 82 cells carry rice area above 100 hectares; values range from 99 to 2048 with a median of 700. The highest values sit along the western side of the valley.

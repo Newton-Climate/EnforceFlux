@@ -1,0 +1,1 @@
+A single square map of one simulated methane source field, 1 km on a side, shown as a raster with no axes or colour bar. Emission is organised into irregular patches a few hundred metres across, with bright high-emitting cells in one corner and a dark low-emitting region through the centre. It is the L = 250 m, CV = 2.0 case from the nine simulated fields.
