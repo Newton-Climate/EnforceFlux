@@ -1,0 +1,36 @@
+{
+  "interval": {
+    "id": "les0001",
+    "u_star": 0.2987779676704503,
+    "L": -30.582154540352317,
+    "z0": 0.1,
+    "wind_dir_deg": 30.662744813319932,
+    "wind_speed": 1.8277505432774346,
+    "z_ref": 2.0,
+    "sd_u": 0.7469449191761257,
+    "sd_v": 0.5975559353409006,
+    "sd_w": 0.37347245958806286
+  },
+  "toward_bearing_deg": 210.66274481331996,
+  "derivation": {
+    "case_dir": "runs/source_heterogeneity_les2km_rice_paddy_l200_cv2p0_wind3_surface/dispersion/concentration_microhh/microhh_case",
+    "window_s": [
+      2700.0,
+      5400.0
+    ],
+    "z_ref": 2.0,
+    "n_columns": 1,
+    "n_records": 27001,
+    "u_star": 0.2987779676704503,
+    "toward_bearing_deg": 210.66274481331996,
+    "wind_dir_deg": 30.662744813319932,
+    "variants": {
+      "L_arithmetic": -30.582154540352317,
+      "L_harmonic": -23.89193215293537,
+      "wind_speed_vector_mean": 1.8277505432774346,
+      "wind_speed_scalar_mean": 1.9094352504635506
+    }
+  },
+  "L_key": "L_arithmetic",
+  "speed_key": "wind_speed_vector_mean"
+}

@@ -1,0 +1,101 @@
+# ============================================================================
+# Centered-patch LES nature / tagged-tracer operator base config
+# ============================================================================
+#   enforceflux dispersion --config configs/hetero_patch_2km_centered/dispersion.yaml
+#
+# Geometry (this is the whole point of the config):
+#   * Domain      : 2.5 x 2.5 km, centered on (center_lon, center_lat).
+#   * Grid spacing: 50 m  ->  50 x 50 horizontal LES cells.
+#   * Emission    : a 2.0 x 2.0 km patch centered in the domain (40 x 40 cells),
+#     patch, i.e. a 250 m (= 5 cell) zero-emission margin on every side. The
+#     patch is centered because the source generator grid is offset by that
+#     margin: origin_(x,y)_m = -1000, spanning -1000 .. +1000 m inside the
+#     -1250 .. +1250 m domain.
+#
+# WHY 50 m: the tagged-tracer operator emits ONE passive tracer per source
+# cell (tagged_operator.py). Tracer count = (patch_side / dx)^2:
+#     dx = 25 m -> 80x80 = 6400 tracers   (turbulence-resolving, but ~infeasible)
+#     dx = 50 m -> 40x40 = 1600 tracers   (this file: resolving + feasible)
+#     dx =125 m -> 16x16 =  256 tracers   (cheap, but too coarse for real LES)
+# To change resolution, keep these consistent: domain spacing_m, microhh.grid
+# (itot/jtot = 2500/dx, xsize/ysize = 2500), and sources.config.grid
+# (dx_m = dx, nx = ny = 2000/dx, origin = -1000).
+# ============================================================================
+
+stage: dispersion
+
+run:
+  name: hetero_patch_2km_centered
+
+inputs: {}
+
+dispersion:
+
+  transport:
+    model: microhh
+    mode: simulation
+    start: "2020-03-31T00:00:00"
+    end:   "2020-03-31T06:00:00"
+
+  met:
+    records:
+      - {time: "2020-03-31T00:00", wind_speed_m_s: 3.0, wind_direction_deg: 270.0,
+         temperature_k: 290.0, mixing_height_m: 800.0,
+         friction_velocity_m_s: 0.30, sensible_heat_flux_w_m2:  150.0}
+      - {time: "2020-03-31T06:00", wind_speed_m_s: 3.5, wind_direction_deg: 275.0,
+         temperature_k: 295.0, mixing_height_m: 1000.0,
+         friction_velocity_m_s: 0.34, sensible_heat_flux_w_m2:  120.0}
+
+  # 2.5 x 2.5 km box, centered on the lon/lat, 50 m spacing.
+  domain:
+    center_lon: -121.75
+    center_lat: 39.15
+    x_min: -1250.0
+    x_max:  1250.0
+    y_min: -1250.0
+    y_max:  1250.0
+    spacing_m: 50.0
+    receptor_height_m: 2.0
+    heights_m: [100.0]
+
+  # --- centered 2 x 2 km emission patch ---
+  # The generator grid IS the patch: 40x40 cells of 50 m, origin at -1000 so it
+  # is centered. Every cell is strictly positive (no f_emit), so EVERY patch
+  # cell becomes a source -> every patch cell gets tagged when the operator is
+  # built -> the operator can then evaluate ANY source distribution over the
+  # patch. Do NOT set f_emit here: masked (zero) cells would not be tagged, and
+  # any later distribution emitting there would be rejected as a "stray" cell.
+  sources:
+    generator: lognormal_field
+    config:
+      Q_true_kg_s: 2.7778e-2
+      grid: {nx: 40, ny: 40, dx_m: 50.0, origin_x_m: -1000.0, origin_y_m: -1000.0}
+      alt_m: 2.0
+      covariance: {model: exponential, L_m: 500.0}
+      cv: 1.0
+      seed: 0
+      basis: {coarsen: 4}          # inversion basis only; does not affect tagging
+      prior: {mean_kg_s_per_cell: 0.0}
+      les_case:
+        template: runs/sacramento_paddy_ec_30m/paddy/microhh_case
+        scalar: ch4
+
+  # Receptors inside the domain, ringing the patch (wind ~270 -> plume goes east).
+  receptors:
+    - {id: r_n,  x_m:    0.0, y_m:  900.0, alt_m: 3.0}
+    - {id: r_e,  x_m:  900.0, y_m:    0.0, alt_m: 3.0}
+    - {id: r_s,  x_m:    0.0, y_m: -900.0, alt_m: 3.0}
+    - {id: r_w,  x_m: -900.0, y_m:    0.0, alt_m: 3.0}
+    - {id: r_ne, x_m:  700.0, y_m:  700.0, alt_m: 3.0}
+    - {id: r_sw, x_m: -700.0, y_m: -700.0, alt_m: 3.0}
+    - {id: r_nw, x_m: -700.0, y_m:  700.0, alt_m: 3.0}
+    - {id: r_se, x_m:  700.0, y_m: -700.0, alt_m: 3.0}
+
+  microhh:
+    executable: ../../microhh/build/microhh
+    num_workers: 4          # (npx,npy)=(2,2); 50%2==0, ktot 64%2==0
+    grid: {itot: 50, jtot: 50, ktot: 64, xsize: 2500.0, ysize: 2500.0, zsize: 2048.0}
+    spinup_seconds: 1800
+    runtime_seconds: 3600
+    sampletime: 60
+    met_reduce: daytime_mean
