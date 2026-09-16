@@ -23,7 +23,9 @@ Usage::
     # available_file → Path("inputs/meteo/AVAILABLE")
 """
 import calendar
+from contextlib import contextmanager
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -153,6 +155,20 @@ class ERA5Downloader:
     # ── Public API ────────────────────────────────────────────────────────────
 
     def download(
+        self,
+        start: str | datetime,
+        end: str | datetime,
+        bbox: tuple[float, float, float, float] | None = None,
+    ) -> DownloadResult:
+        """Download ERA5, serializing access to a shared output directory.
+
+        A met run can be resumed safely, but two download processes must not
+        merge or clean up the same daily raw GRIB files at the same time.
+        """
+        with _output_dir_lock(self.output_dir):
+            return self._download_unlocked(start=start, end=end, bbox=bbox)
+
+    def _download_unlocked(
         self,
         start: str | datetime,
         end: str | datetime,
@@ -485,6 +501,32 @@ def _require_eccodes() -> None:
             "The system eccodes library (brew install eccodes / apt eccodes) "
             "must also be present."
         ) from exc
+
+
+@contextmanager
+def _output_dir_lock(output_dir: Path) -> Iterator[None]:
+    """Exclusively lock an ERA5 output directory for the current process.
+
+    ``flock`` is advisory, so all ERA5Downloader instances cooperate without
+    leaving a stale lock after a crash.  The lock file itself is intentionally
+    retained as harmless run metadata.
+    """
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - supported Unix deployments use fcntl
+        yield
+        return
+
+    lock_path = output_dir / ".era5_download.lock"
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        log.info("Waiting for ERA5 output-directory lock: %s", lock_path)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        log.info("Acquired ERA5 output-directory lock: %s", lock_path)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def _parse_dt(s: str | datetime) -> datetime:

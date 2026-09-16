@@ -19,7 +19,9 @@ met_from_les : dict, optional
     Kwargs for :func:`enforceflux.blsmodelr.met_from_les.intervals_from_les`
     (``velocity_field``, ``z``, ``surface_theta``, ``theta_ref``, ``z_ref``,
     ``z0``, ``window_s``, ``dt``, optional ``id_prefix``).
-interval_reduce : {"mean", "sum"}, default "mean"
+interval_reduce : {"mean", "sum", "none"}, default "mean"
+    ``"none"`` keeps one observation row per (interval, instrument) rather
+    than collapsing the interval axis.
     Passed through to :func:`jacobian_from_bls_result`.
 wrapper : dict, optional
     Forwarded verbatim to :class:`~enforceflux.blsmodelr.wrapper.BlsWrapper`

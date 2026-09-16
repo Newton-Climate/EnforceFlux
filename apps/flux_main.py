@@ -75,6 +75,36 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def total_flux_sensitivity(G, obs_meta: dict, *, n_obs: int) -> np.ndarray:
+    """Each observation's sensitivity to a spatially uniform total flux.
+
+    For a one-state inversion the state column IS that sensitivity, so it is
+    used directly and that path stays bit-identical. A resolved state spreads
+    the total across columns and no single column carries it, so the input
+    builder supplies the uniform-template sensitivity instead.
+    """
+    g_arr = np.asarray(G, dtype=float)
+    if g_arr.shape[1] == 1:
+        return np.abs(g_arr[:, 0])
+
+    supplied = obs_meta.get("uniform_total_sensitivity")
+    if supplied is None:
+        raise ValueError(
+            "observations.sigma_repr_fraction on a "
+            f"{g_arr.shape[1]}-state inversion needs each observation's "
+            "sensitivity to a uniform total flux, which this input mode does "
+            "not provide. Use a total-only inversion, or drop "
+            "sigma_repr_fraction and rely on the absolute sigma_repr term."
+        )
+    sensitivity = np.abs(np.asarray(supplied, dtype=float))
+    if sensitivity.shape != (n_obs,):
+        raise ValueError(
+            f"uniform_total_sensitivity has {sensitivity.shape} entries but "
+            f"there are {n_obs} observations"
+        )
+    return sensitivity
+
+
 def main() -> None:
     from enforceflux.inversion import bounded_bayesian_linear_inversion, oe_from_linear, optimize_oe
     from enforceflux.inversion.bayesian import bayesian_linear_inversion
@@ -192,26 +222,22 @@ def main() -> None:
         Se = _add_observation_variance(Se, sigma_repr ** 2)
         obs_meta["sigma_repr"] = sigma_repr
 
-    # A total-flux inversion can also carry multiplicative transport error.
-    # Its concentration-scale uncertainty grows with each observation's
-    # sensitivity to Q_total, unlike a single absolute error floor. This keeps
-    # a high-sensitivity path segment from dominating solely because G is
-    # larger, while the absolute term above still handles additive mismatch.
+    # An inversion can also carry multiplicative transport error. Its
+    # concentration-scale uncertainty grows with each observation's
+    # sensitivity to the total flux, unlike a single absolute error floor.
+    # This keeps a high-sensitivity path segment from dominating solely
+    # because G is larger, while the absolute term above still handles
+    # additive mismatch.
     sigma_repr_fraction = float(obs_cfg.get("sigma_repr_fraction", 0.0))
     if sigma_repr_fraction > 0.0:
-        if np.asarray(G).shape[1] != 1:
-            raise ValueError(
-                "observations.sigma_repr_fraction currently requires a "
-                "total-only (one-state) inversion"
-            )
         flux_scale = float(obs_cfg.get("sigma_repr_flux_scale_kg_s", 0.0))
         if flux_scale <= 0.0:
             raise ValueError(
                 "observations.sigma_repr_flux_scale_kg_s must be positive "
                 "when sigma_repr_fraction is used"
             )
-        sigma_by_obs = (
-            sigma_repr_fraction * flux_scale * np.abs(np.asarray(G)[:, 0])
+        sigma_by_obs = sigma_repr_fraction * flux_scale * total_flux_sensitivity(
+            G, obs_meta, n_obs=len(y_obs)
         )
         Se = _add_observation_variance(Se, sigma_by_obs ** 2)
         obs_meta["sigma_repr_fraction"] = sigma_repr_fraction

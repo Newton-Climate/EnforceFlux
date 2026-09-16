@@ -178,7 +178,30 @@ class FlexpartBackwardRunner:
                         inst_id=component_id,
                     )
                 if not dry_run and should_run:
-                    self._execute(run_dir, pathnames)
+                    # FLEXPART can occasionally fail before reading OUTGRID on
+                    # long, multi-receptor jobs.  Rebuild this receptor's
+                    # isolated workspace and retry once instead of aborting an
+                    # entire network sweep.  A completed output still wins,
+                    # as handled in _execute().
+                    retries = max(0, int(self.config.get("max_retries", 1)))
+                    for attempt in range(retries + 1):
+                        try:
+                            self._execute(run_dir, pathnames)
+                            break
+                        except subprocess.CalledProcessError:
+                            if attempt >= retries:
+                                raise
+                            warnings.warn(
+                                f"FLEXPART failed for {component_id}; rebuilding "
+                                f"its workspace and retrying ({attempt + 1}/{retries}).",
+                                RuntimeWarning,
+                                stacklevel=2,
+                            )
+                            self._prepare_run_dir(
+                                run_dir, options_dir, output_dir, pathnames,
+                                inst_lon=inst_lon, inst_lat=inst_lat,
+                                inst_z=inst.z, inst_id=component_id,
+                            )
                 if not dry_run:
                     footprint, fp_lons, fp_lats = self._read_raw_footprint(output_dir)
                     rows.append(self._sample_at_sources(

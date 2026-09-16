@@ -105,3 +105,57 @@ def test_bls_transport_operator_refuses_single_point_open_path():
         op.build_forward_operator(
             sources=[], instruments=[beam], domain=None, config=config
         )
+
+
+def _two_intervals(config: dict) -> dict:
+    """Same config with a second, differently-forced turbulence window.
+
+    Wind speed must be among the differences: the dry-run shim is an analytic
+    stub that ignores direction and u*, so two windows differing only in those
+    produce identical rows and the ordering assertion below would hold
+    vacuously.
+    """
+    second = dict(config["intervals"][0])
+    second.update(id="t1", u_star=0.20, wind_dir_deg=250.0, wind_speed=2.0)
+    config["intervals"] = [config["intervals"][0], second]
+    return config
+
+
+def test_bls_operator_none_gives_one_row_per_interval_and_instrument():
+    config = _two_intervals(_config())
+    config["interval_reduce"] = "none"
+    instruments = _make_instruments()
+
+    result = BlsTransportOperator().build_forward_operator(
+        sources=[], instruments=instruments, domain=None, config=config
+    )
+
+    n_src = config["source_grid"]["nx"] * config["source_grid"]["ny"]
+    assert result.g.shape == (2 * len(instruments), n_src)
+    assert np.all(np.isfinite(result.g))
+
+
+def test_bls_operator_none_is_ordered_interval_major():
+    """The flux stage indexes operator rows as ``t * n_instruments + i``."""
+    config = _two_intervals(_config())
+    instruments = _make_instruments()
+
+    config["interval_reduce"] = "none"
+    stacked = BlsTransportOperator().build_forward_operator(
+        sources=[], instruments=instruments, domain=None, config=config
+    ).g
+    config["interval_reduce"] = "mean"
+    averaged = BlsTransportOperator().build_forward_operator(
+        sources=[], instruments=instruments, domain=None, config=config
+    ).g
+
+    n = len(instruments)
+    # Interval-major: the two blocks of n rows must average to the mean path.
+    np.testing.assert_allclose(
+        (stacked[:n] + stacked[n:]) / 2.0, averaged, rtol=1e-9
+    )
+    # The two intervals are forced differently, so the blocks must differ —
+    # otherwise the ordering assertion above would pass on duplicated rows.
+    assert not np.allclose(stacked[:n], stacked[n:]), (
+        "interval blocks are identical; the ordering assertion above is vacuous"
+    )

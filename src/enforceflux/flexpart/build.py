@@ -159,7 +159,41 @@ class FlexpartCompiler:
             if path.exists():
                 candidates.append(path)
 
+        candidates.extend(self._env_dirs(subdir))
         return self._dedupe_paths(candidates)
+
+    @staticmethod
+    def _env_dirs(subdir: str) -> list[Path]:
+        """Directories advertised by the environment rather than by Homebrew.
+
+        On HPC systems the toolchain comes from module files, not /usr/local, so
+        honour the *_PREFIX variables the Makefile already consumes plus the
+        CPATH / LIBRARY_PATH those modules export. Spack-style installs put
+        shared objects in lib64, so probe that too.
+        """
+        found: list[Path] = []
+        subdirs = (subdir, "lib64") if subdir == "lib" else (subdir,)
+
+        for var in ("ECCODES_PREFIX", "NETCDF_PREFIX", "HDF5_PREFIX"):
+            root = os.environ.get(var)
+            if not root:
+                continue
+            for sub in subdirs:
+                path = Path(root) / sub
+                if path.exists():
+                    found.append(path)
+
+        explicit = "NETCDFF_INCDIR" if subdir == "include" else "NETCDFF_LIBDIR"
+        value = os.environ.get(explicit)
+        if value and Path(value).exists():
+            found.append(Path(value))
+
+        search = "CPATH" if subdir == "include" else "LIBRARY_PATH"
+        for entry in (os.environ.get(search) or "").split(os.pathsep):
+            if entry and Path(entry).exists():
+                found.append(Path(entry))
+
+        return found
 
     def _validate_toolchain(self, *, include_dirs: list[Path], lib_dirs: list[Path]) -> None:
         missing_tools = [name for name in ("make", self.compiler) if shutil.which(name) is None]
@@ -175,14 +209,22 @@ class FlexpartCompiler:
             raise RuntimeError(
                 "Unable to find NetCDF Fortran headers. Install `netcdf-fortran` and ensure it is linked."
             )
-        if not any((path / "libeccodes_f90.dylib").exists() or (path / "libeccodes_f90.a").exists() for path in lib_dirs):
+        if not any(self._has_library(path, "libeccodes_f90") for path in lib_dirs):
             raise RuntimeError(
                 "Unable to find ecCodes Fortran libraries. Install `eccodes` and ensure it is linked."
             )
-        if not any((path / "libnetcdff.dylib").exists() or (path / "libnetcdff.a").exists() for path in lib_dirs):
+        if not any(self._has_library(path, "libnetcdff") for path in lib_dirs):
             raise RuntimeError(
                 "Unable to find NetCDF Fortran libraries. Install `netcdf-fortran` and ensure it is linked."
             )
+
+    @staticmethod
+    def _has_library(directory: Path, stem: str) -> bool:
+        """True if ``stem`` exists in ``directory`` as a shared or static library."""
+        return any(
+            (directory / f"{stem}{suffix}").exists()
+            for suffix in (".dylib", ".so", ".a")
+        )
 
     def _brew_prefix(self, formula: str) -> Path | None:
         brew = shutil.which("brew")

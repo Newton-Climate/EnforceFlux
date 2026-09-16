@@ -1,0 +1,34 @@
+gate: seeds 0-19 replay reproduces pooled e_pure statistics exactly
+  replicate 0/200
+  replicate 25/200
+  replicate 50/200
+  replicate 75/200
+  replicate 100/200
+  replicate 125/200
+  replicate 150/200
+  replicate 175/200
+ geometry pooled_by  value statistic  null_q025  null_median  null_q975  null_mean  study_value  n_seeds  study_percentile_in_null
+    point        CV    0.5        sd     0.1137       0.1382     0.1680     0.1392       0.1334       20                      32.5
+    point        CV    0.5       mae     0.0877       0.1042     0.1234     0.1043       0.1031       20                      46.0
+    point        CV    1.0        sd     0.1948       0.2504     0.3291     0.2542       0.2374       20                      32.5
+    point        CV    1.0       mae     0.1505       0.1834     0.2223     0.1846       0.1817       20                      46.0
+    point        CV    2.0        sd     0.2940       0.3970     0.6178     0.4107       0.3838       20                      40.0
+    point        CV    2.0       mae     0.2282       0.2796     0.3534     0.2829       0.2812       20                      53.0
+    point       L_m  100.0        sd     0.1816       0.2519     0.4252     0.2652       0.2706       20                      60.5
+    point       L_m  100.0       mae     0.1355       0.1721     0.2225     0.1743       0.1803       20                      64.0
+    point       L_m  250.0        sd     0.2017       0.2960     0.4848     0.3046       0.2989       20                      52.0
+    point       L_m  250.0       mae     0.1573       0.1969     0.2717     0.2027       0.2014       20                      54.0
+    point       L_m  500.0        sd     0.1927       0.2711     0.4331     0.2856       0.2427       20                      25.5
+    point       L_m  500.0       mae     0.1486       0.1891     0.2633     0.1948       0.1843       20                      41.5
+open_path        CV    0.5        sd     0.0831       0.1081     0.1323     0.1073       0.0962       20                      22.0
+open_path        CV    0.5       mae     0.0656       0.0842     0.1062     0.0845       0.0769       20                      24.0
+open_path        CV    1.0        sd     0.1383       0.1913     0.2483     0.1923       0.1635       20                      17.5
+open_path        CV    1.0       mae     0.1135       0.1473     0.1904     0.1483       0.1321       20                      19.5
+open_path        CV    2.0        sd     0.2064       0.2946     0.4241     0.2998       0.2443       20                      16.0
+open_path        CV    2.0       mae     0.1697       0.2221     0.2846     0.2238       0.1986       20                      22.5
+open_path       L_m  100.0        sd     0.0995       0.1582     0.2496     0.1620       0.1267       20                      16.5
+open_path       L_m  100.0       mae     0.0794       0.1160     0.1635     0.1181       0.0966       20                      17.5
+open_path       L_m  250.0        sd     0.1465       0.2227     0.3609     0.2272       0.1836       20                      24.5
+open_path       L_m  250.0       mae     0.1161       0.1647     0.2308     0.1660       0.1455       20                      28.0
+open_path       L_m  500.0        sd     0.1521       0.2213     0.3657     0.2331       0.2141       20                      42.0
+open_path       L_m  500.0       mae     0.1178       0.1665     0.2528     0.1726       0.1655       20                      48.5

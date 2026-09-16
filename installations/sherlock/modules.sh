@@ -5,7 +5,7 @@
 #   1. loads a known-good toolchain via Lmod,
 #   2. exports the *_PREFIX / *_DIR variables the top-level Makefile consumes
 #      (ECCODES_PREFIX, NETCDF_PREFIX, NETCDFF_LIBDIR, NETCDFF_INCDIR),
-#   3. exports SHERLOCK=1 so the Makefile's Sherlock targets can be gated.
+#   3. exports ENFORCEFLUX_SHERLOCK=1 so the Makefile targets can be gated.
 #
 # Usage:
 #   source installations/sherlock/modules.sh
@@ -18,7 +18,14 @@
 
 # ── Module defaults (override by exporting before sourcing) ──────────────────
 : "${GCC_MOD:=gcc}"
-: "${OPENMPI_MOD:=openmpi}"
+# CentOS 7 ships binutils 2.27, whose assembler predates endbr64; gcc 12
+# emits CET instructions by default, so source builds fail without this.
+: "${BINUTILS_MOD:=binutils}"
+# Pinned: fftw/3.3.10 and netcdf-c/4.9.0 (via pnetcdf) are built against
+# openmpi/4.1.2. The default openmpi (5.0.5) shares the libmpi.so.40 soname, so
+# a MicroHH built with it loads 4.1.2's libmpi under 5.0.5's launcher and every
+# rank hangs forever in `init`.
+: "${OPENMPI_MOD:=openmpi/4.1.2}"
 : "${CMAKE_MOD:=cmake}"
 : "${HDF5_MOD:=hdf5}"
 : "${NETCDF_C_MOD:=netcdf-c}"
@@ -26,7 +33,9 @@
 : "${FFTW_MOD:=fftw}"
 : "${ECCODES_MOD:=eccodes}"          # if missing on your tree: unset ECCODES_MOD
 : "${PYTHON_MOD:=python/3.12.1}"
-: "${BOOST_MOD:=boost}"              # MicroHH build-dep
+# MicroHH build-dep (headers only). Pinned because boost >=1.87 depends_on
+# openmpi/5.0 and silently swaps out the openmpi/4.1.2 pinned above.
+: "${BOOST_MOD:=boost/1.79.0}"
 : "${GIT_MOD:=git}"
 
 # ── Load Lmod stack ──────────────────────────────────────────────────────────
@@ -47,6 +56,7 @@ _load() {
 }
 
 _load "$GCC_MOD"
+_load "$BINUTILS_MOD"
 _load "$OPENMPI_MOD"
 _load "$CMAKE_MOD"
 _load "$GIT_MOD"
@@ -64,21 +74,32 @@ _load "$PYTHON_MOD"
 _prefix_from_module() {
     # $1 = module name (e.g. "netcdf-c"), $2 = ROOT env var name.
     local mod="$1" root_var="$2"
-    local root="${!root_var}"
+    # Use ${!var-} so indirect expansion of an unset *_ROOT does not abort
+    # when this file is sourced from a script running under `set -u`.
+    local root="${!root_var-}"
     if [ -n "$root" ]; then
         printf '%s' "$root"
         return
     fi
     # Fall back to `module show` output → look for "prepend_path PATH <prefix>/bin"
+    # `|| true`: grep -m1 closes the pipe early, so `module show` dies of
+    # SIGPIPE (141); a caller running `set -eo pipefail` would abort on it.
     module show "$mod" 2>&1 \
-        | awk '/prepend_path\("PATH"/ { gsub(/[",)]/, "", $3); sub(/\/bin$/, "", $3); print $3; exit }'
+        | grep -m1 'prepend_path("PATH"' \
+        | sed -E 's/.*prepend_path\("PATH",[[:space:]]*"([^"]*)".*/\1/; s#/bin/?$##' \
+        || true
 }
 
 export ECCODES_PREFIX="${ECCODES_PREFIX:-$(_prefix_from_module "$ECCODES_MOD" ECCODES_ROOT)}"
+# Sherlock ships no eccodes module; fall back to a user-local build
+# (see installations/sherlock/build_eccodes.sh).
+if [ -z "$ECCODES_PREFIX" ] && [ -d "$HOME/opt/eccodes/include" ]; then
+    export ECCODES_PREFIX="$HOME/opt/eccodes"
+fi
 export NETCDF_PREFIX="${NETCDF_PREFIX:-$(_prefix_from_module "$NETCDF_C_MOD" NETCDF_C_ROOT)}"
 _NCF_PREFIX="$(_prefix_from_module "$NETCDF_FORTRAN_MOD" NETCDF_FORTRAN_ROOT)"
-export NETCDFF_LIBDIR="${NETCDFF_LIBDIR:-${_NCF_PREFIX}/lib}"
-export NETCDFF_INCDIR="${NETCDFF_INCDIR:-${_NCF_PREFIX}/include}"
+export NETCDFF_LIBDIR="${NETCDFF_LIBDIR:-${_NCF_PREFIX:+$_NCF_PREFIX/lib}}"
+export NETCDFF_INCDIR="${NETCDFF_INCDIR:-${_NCF_PREFIX:+$_NCF_PREFIX/include}}"
 export HDF5_PREFIX="${HDF5_PREFIX:-$(_prefix_from_module "$HDF5_MOD" HDF5_ROOT)}"
 export FFTW_PREFIX="${FFTW_PREFIX:-$(_prefix_from_module "$FFTW_MOD" FFTW_ROOT)}"
 
@@ -87,7 +108,18 @@ export CPATH="${ECCODES_PREFIX:+$ECCODES_PREFIX/include:}${NETCDF_PREFIX:+$NETCD
 export LIBRARY_PATH="${ECCODES_PREFIX:+$ECCODES_PREFIX/lib:}${NETCDF_PREFIX:+$NETCDF_PREFIX/lib:}${NETCDFF_LIBDIR:+$NETCDFF_LIBDIR:}${HDF5_PREFIX:+$HDF5_PREFIX/lib:}${FFTW_PREFIX:+$FFTW_PREFIX/lib:}${LIBRARY_PATH}"
 export LD_LIBRARY_PATH="${ECCODES_PREFIX:+$ECCODES_PREFIX/lib:}${NETCDF_PREFIX:+$NETCDF_PREFIX/lib:}${NETCDFF_LIBDIR:+$NETCDFF_LIBDIR:}${HDF5_PREFIX:+$HDF5_PREFIX/lib:}${FFTW_PREFIX:+$FFTW_PREFIX/lib:}${LD_LIBRARY_PATH}"
 
-export SHERLOCK=1
+# openmpi/4.1.2 swaps in gcc/10.1.0, whose libstdc++ lacks GLIBCXX_3.4.29, but
+# the user-built eccodes in ~/opt was compiled with gcc 12 and needs it — so
+# the Python ERA5 reader fails to import eccodes. gcc 12's libstdc++ is
+# backward compatible with the gcc-10-built MicroHH, so put it first.
+_GCC12_LIB=/share/software/user/open/gcc/12.4.0/lib64
+if [ -d "$_GCC12_LIB" ]; then
+    export LD_LIBRARY_PATH="$_GCC12_LIB:${LD_LIBRARY_PATH}"
+fi
+
+# NOTE: $SHERLOCK is a readonly system variable on the cluster (it holds
+# the Sherlock generation, e.g. 2), so it cannot double as our own flag.
+export ENFORCEFLUX_SHERLOCK=1
 
 echo "── EnforceFlux Sherlock env loaded ──"
 module list 2>&1 | sed 's/^/  /'

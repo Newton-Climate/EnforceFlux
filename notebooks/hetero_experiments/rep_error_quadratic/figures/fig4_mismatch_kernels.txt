@@ -1,0 +1,7 @@
+Four maps of the mismatch kernel dw over the 1 km source domain, expressed as a multiple of the uniform weight 1/625, for point sensors and open paths at n = 1 and n = 4, with 50 and 90 percent cumulative-footprint contours and the receptors. Blue cells (-1) are unseen by the footprint; red cells are overweighted. Point sensors concentrate weight in a narrow upwind wedge, open paths spread it along the path, and four sensors widen coverage; see the table for the fraction of cells with non-zero weight and the peak overweighting.
+
+design,dw_min_x_uniform,dw_max_x_uniform,frac_cells_w_positive,cells_in_50pct,cells_in_90pct,N_times_sum_dw_sq
+point_n1,-1,44.2,0.472,15,103,14.25
+open_path_n1,-1,15.08,0.9968,113,425,1.787
+point_n4,-1,42.94,0.9664,65,337,5.415
+open_path_n4,-0.9984,13.17,1,125,436,1.236

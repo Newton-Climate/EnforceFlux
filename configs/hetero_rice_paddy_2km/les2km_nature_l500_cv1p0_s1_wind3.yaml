@@ -1,0 +1,100 @@
+stage: dispersion
+run:
+  name: source_heterogeneity_les2km_rice_paddy_l500_cv1p0_s1_wind3_surface # Run label
+inputs: {} # No external inputs
+dispersion:
+  transport:
+    model: microhh # Transport solver
+    mode: simulation # Use modeled meteorology, not replay
+    # 08:00-09:30 PDT on the selected windy day. The 90-minute window
+    # matches spinup_seconds + runtime_seconds below.
+    start: '2026-07-22T15:00:00' # UTC
+    end: '2026-07-22T16:30:00' # UTC
+  met:
+    era5:
+      # Produced by sac_met_2026-07-22.yaml. The ERA5 adapter samples the
+      # nearest grid point to domain.center_lon/domain.center_lat below.
+      meteo_dir: ../../runs/sacramento_valley_2026_july22/met
+      surface_roughness_m: 0.1 # Local aerodynamic roughness, m
+      friction_velocity: log_law # Derive u* from ERA5 10 m wind and roughness
+      min_mixing_height_m: 50.0 # Floor nocturnal ERA5 boundary-layer depth, m
+      min_wind_speed_m_s: 0.3 # Calm-wind numerical floor, m s^-1
+  domain:
+    center_lon: -121.75 # WGS84 lon
+    center_lat: 39.15 # WGS84 lat
+    x_bearing_deg: 90.0 # Domain x-axis azimuth
+    x_min: -3840.0 # m
+    x_max: 3840.0 # m
+    y_min: -1920.0 # m
+    y_max: 1920.0 # m
+    spacing_m: 80.0 # Grid spacing in output domain
+    receptor_height_m: 2.0 # m AGL
+  sources:
+    generator: lognormal_field # Spatial source sampler
+    config:
+      Q_true_kg_s: 0.027778 # Total emission rate, kg s^-1
+      grid:
+        nx: 50 # Cells in x
+        ny: 50 # Cells in y
+        dx_m: 40.0 # Cell size, m
+        origin_x_m: -1000.0 # Lower-left x origin, m
+        origin_y_m: -1000.0 # Lower-left y origin, m
+      alt_m: 2.0 # Source release height, m AGL
+      covariance:
+        model: exponential # Correlation kernel
+        L_m: 500.0 # Correlation length, m
+      cv: 1.0 # Coefficient of variation
+      seed: 1 # RNG seed
+      basis:
+        nx: 3 # Basis functions in x
+        ny: 3 # Basis functions in y
+      prior:
+        mean_kg_s_per_cell: 0.0 # Prior mean per cell
+  receptors:
+    - id: edge_2m
+      x_m: -299.393581384586 # m
+      y_m: -1213.9827108564796 # m
+      alt_m: 2.0 # m AGL
+    - id: edge_4m
+      x_m: -299.393581384586 # m
+      y_m: -1213.9827108564796 # m
+      alt_m: 4.0 # m AGL
+  microhh:
+    executable: ../../microhh/build/microhh # MicroHH binary
+    restart_from:
+      case_dir: ../../runs/source_heterogeneity_les2km_rice_paddy_l200_cv2p0_wind3_surface/dispersion/concentration_microhh/microhh_case
+      time_s: 3600
+    num_workers: 4 # Parallel workers
+    # Generated lognormal fields are automatically realised by the MicroHH
+    # adapter as mass-conserving bottom-boundary fluxes.
+    grid:
+      itot: 96 # Cells in x
+      jtot: 48 # Cells in y
+      ktot: 64 # Cells in z
+      xsize: 7680.0 # Domain width, m
+      ysize: 3840.0 # Domain depth, m
+      zsize: 1024.0 # Domain height, m
+      dz_surface_m: 0.5 # Near-surface vertical spacing, m
+      dz_max_m: 32.0 # Max vertical spacing, m
+    source_x0: 3840.0 # Source x offset in MicroHH frame, m
+    source_y0: 1920.0 # Source y offset in MicroHH frame, m
+    cross_xy_m: 2.0 # Explicit 2 m AGL concentration plane
+    spinup_seconds: 0 # Reuse the donor turbulent restart
+    runtime_seconds: 2700 # Simulation period, s
+    # Sparse gridded output and high-rate single-column met are independent
+    # native MicroHH streams.
+    sampletime: 60 # Output interval, s
+    stats_sampletime: 20 # Stats interval, s
+    cross_sampletime: 60 # Cross-section interval, s
+    # Single-column met output is a native MicroHH stream, but the gridded output is produced by a post-processing step that reads the native MicroHH output and writes a new NetCDF file with a coarser grid. The post-processing step is controlled by the `extra_ini` section below.
+    column_sampletime: 0.1 # Column met interval, s
+    # The `cross_xz_m` parameter controls the horizontal extent of the cross-section output. The `met_reduce` parameter controls how the single-column met output is reduced to a single value per time step. The `precision` parameter controls the precision of the output data. The `level_index` parameter controls which vertical level is used for the cross-section output. The `extra_ini` section allows for additional configuration options for the MicroHH executable.
+    cross_xz_m: 1920.0 # Cross-section half-width, m
+    met_reduce: mean # Reduction applied to column met
+    precision: float32 # Output dtype
+    level_index: 3 # Cross-section level index (~2 m AGL)
+    extra_ini:
+      dump:
+        swdump: 1 # Enable dumps
+        sampletime: 60 # Dump interval, s
+        dumplist: u,v,w,th,ch4 # Fields to write

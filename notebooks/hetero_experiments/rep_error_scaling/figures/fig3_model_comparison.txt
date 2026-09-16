@@ -1,0 +1,14 @@
+Figure 3. Observed versus predicted run-to-run spread for six candidate scaling
+models, point sensors with n = 1, both axes logarithmic and percent. Each panel
+shows the nine CV-L conditions against a one-to-one dashed line; colour encodes
+CV and marker shape encodes L. Annotated in each panel are the in-sample R^2 in
+log space, the leave-one-condition-out RMSE in log space (LOCO, the honest
+generalization number given only nine design points), and BIC.
+
+Model,form,R2_log,LOCO_rmse_log,BIC,a,alpha,beta
+M0,a·CV,0.658,0.345,6.48,0.195,fixed,fixed
+M1,a·L/√A,-0.387,0.696,19.10,0.841,fixed,fixed
+M2,a·CV·L/√A,0.271,0.505,13.30,0.841,fixed,fixed
+M3,a·CV^α·(L/√A)^β,0.937,0.188,-4.28,0.338,0.784,0.377
+M4,a·σ_log^α·(L/√A)^β,0.939,0.187,-4.66,0.437,1.098,0.377
+M5,a·CV/√N_eff,lognormal,0.743,0.299,3.91,0.573,fixed,fixed

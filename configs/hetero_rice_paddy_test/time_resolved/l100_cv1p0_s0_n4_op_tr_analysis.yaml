@@ -1,0 +1,15 @@
+stage: analysis
+run:
+  name: source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op_tr
+inputs:
+  dispersion: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op_tr_gp/dispersion
+  flux: ../../../runs/source_heterogeneity_les_rice_paddy_l100_cv1p0_s0_wind3_n4_op_tr/flux
+analysis:
+  input:
+    kind: simulation
+    simulation_variable_names:
+    - concentration
+  analysis:
+    prior_variance: 1.0e-08
+  visualization:
+    enabled: false

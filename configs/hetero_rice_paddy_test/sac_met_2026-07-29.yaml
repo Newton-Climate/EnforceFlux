@@ -1,0 +1,28 @@
+# ERA5 meteorology for Sacramento Valley on July 29, 2026.
+# At 39.15 N, 121.75 W, ERA5 10 m wind reaches 2.54 m/s at
+# 14:00 PDT and rises to 3.53 m/s by 18:00 PDT.
+
+stage: met
+
+run:
+  name: sacramento_valley_2026_july29
+
+met:
+  era5:
+    # 05:00-23:00 PDT, providing coverage around the windy afternoon.
+    start: "2026-07-29T12:00:00"
+    end: "2026-07-30T06:00:00"
+    timestep_hours: 3
+    vertical_mode: model_levels
+    model_level_grid_deg: 0.25
+    model_level_allow_global_fallback: false
+    cleanup_raw_daily_grib: false
+    bbox:
+      lon_min: -122.75
+      lat_min: 38.0
+      lon_max: -120.75
+      lat_max: 40.0
+
+  available_filename: AVAILABLE
+  skip_if_available_covers_window: true
+  check_timestep_hours: 3

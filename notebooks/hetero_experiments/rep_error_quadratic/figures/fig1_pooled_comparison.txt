@@ -1,0 +1,147 @@
+Six line panels, point sensors on the top row and open paths on the bottom, comparing pooled total-flux error statistics (percent, 96 inversions per point, 8 seeds) with quadratic-form predictions pooled the same way. Columns show sample SD by CV, sample SD by correlation length L, and mean absolute error by L (the statistic behind the published 10.4, 11.8 and 19.0 percent). A grey band shows where the perfect-transport statistic falls in 95 percent of 200 replays of the study's shared 8-seed design under the generator. Predicted SD exceeds empirical total-error SD in 36 of 36 predictor-by-point comparisons. The empirical perfect-transport SD sits between percentiles 3 and 30 of the band, except at L = 500 m (percentiles 55 to 64).
+
+geometry,pooled_by,statistic,value,series,percent
+point,CV,sd,0.5,null q025,9.901
+point,CV,sd,1,null q025,17.14
+point,CV,sd,2,null q025,25.42
+point,CV,sd,0.5,null median,13.63
+point,CV,sd,1,null median,24.19
+point,CV,sd,2,null median,37.71
+point,CV,sd,0.5,null q975,17.91
+point,CV,sd,1,null q975,37.29
+point,CV,sd,2,null q975,69.22
+point,CV,sd,0.5,"Empirical, total error",9.934
+point,CV,sd,1,"Empirical, total error",16.81
+point,CV,sd,2,"Empirical, total error",26.41
+point,CV,sd,0.5,"Empirical, perfect transport",11.44
+point,CV,sd,1,"Empirical, perfect transport",20.56
+point,CV,sd,2,"Empirical, perfect transport",32.8
+point,CV,sd,0.5,"Predicted, log-linear (as specified)",13.74
+point,CV,sd,1,"Predicted, log-linear (as specified)",24.22
+point,CV,sd,2,"Predicted, log-linear (as specified)",36.9
+point,CV,sd,0.5,"Predicted, exact lognormal",14.4
+point,CV,sd,1,"Predicted, exact lognormal",28.16
+point,CV,sd,2,"Predicted, exact lognormal",53.44
+point,CV,sd,0.5,"Predicted, generator Monte Carlo",14.12
+point,CV,sd,1,"Predicted, generator Monte Carlo",25.73
+point,CV,sd,2,"Predicted, generator Monte Carlo",41.54
+point,L_m,sd,100,null q025,15.26
+point,L_m,sd,250,null q025,16.44
+point,L_m,sd,500,null q025,16.07
+point,L_m,sd,100,null median,24.24
+point,L_m,sd,250,null median,28.14
+point,L_m,sd,500,null median,24.96
+point,L_m,sd,100,null q975,47.06
+point,L_m,sd,250,null q975,53.59
+point,L_m,sd,500,null q975,49.1
+point,L_m,sd,100,"Empirical, total error",13.56
+point,L_m,sd,250,"Empirical, total error",15.15
+point,L_m,sd,500,"Empirical, total error",23.93
+point,L_m,sd,100,"Empirical, perfect transport",20.17
+point,L_m,sd,250,"Empirical, perfect transport",20.21
+point,L_m,sd,500,"Empirical, perfect transport",25.53
+point,L_m,sd,100,"Predicted, log-linear (as specified)",23.78
+point,L_m,sd,250,"Predicted, log-linear (as specified)",28.36
+point,L_m,sd,500,"Predicted, log-linear (as specified)",27.71
+point,L_m,sd,100,"Predicted, exact lognormal",29.41
+point,L_m,sd,250,"Predicted, exact lognormal",37.56
+point,L_m,sd,500,"Predicted, exact lognormal",39.75
+point,L_m,sd,100,"Predicted, generator Monte Carlo",27.21
+point,L_m,sd,250,"Predicted, generator Monte Carlo",31.18
+point,L_m,sd,500,"Predicted, generator Monte Carlo",29.58
+point,L_m,mae,100,null q025,11.78
+point,L_m,mae,250,null q025,13.34
+point,L_m,mae,500,null q025,12.48
+point,L_m,mae,100,null median,17.16
+point,L_m,mae,250,null median,19.5
+point,L_m,mae,500,null median,18.38
+point,L_m,mae,100,null q975,26.4
+point,L_m,mae,250,null q975,29.77
+point,L_m,mae,500,null q975,29.12
+point,L_m,mae,100,"Empirical, total error",10.38
+point,L_m,mae,250,"Empirical, total error",11.82
+point,L_m,mae,500,"Empirical, total error",19.04
+point,L_m,mae,100,"Empirical, perfect transport",17.39
+point,L_m,mae,250,"Empirical, perfect transport",17.74
+point,L_m,mae,500,"Empirical, perfect transport",19.03
+point,L_m,mae,100,"Predicted, log-linear (as specified)",16.73
+point,L_m,mae,250,"Predicted, log-linear (as specified)",20.04
+point,L_m,mae,500,"Predicted, log-linear (as specified)",19.73
+point,L_m,mae,100,"Predicted, exact lognormal",20.07
+point,L_m,mae,250,"Predicted, exact lognormal",25.37
+point,L_m,mae,500,"Predicted, exact lognormal",26.65
+point,L_m,mae,100,"Predicted, generator Monte Carlo",17.35
+point,L_m,mae,250,"Predicted, generator Monte Carlo",20.01
+point,L_m,mae,500,"Predicted, generator Monte Carlo",19.47
+open_path,CV,sd,0.5,null q025,6.699
+open_path,CV,sd,1,null q025,11.42
+open_path,CV,sd,2,null q025,16.56
+open_path,CV,sd,0.5,null median,10.4
+open_path,CV,sd,1,null median,18.26
+open_path,CV,sd,2,null median,28.12
+open_path,CV,sd,0.5,null q975,13.78
+open_path,CV,sd,1,null q975,27.06
+open_path,CV,sd,2,null q975,47.29
+open_path,CV,sd,0.5,"Empirical, total error",7.616
+open_path,CV,sd,1,"Empirical, total error",13.77
+open_path,CV,sd,2,"Empirical, total error",22.24
+open_path,CV,sd,0.5,"Empirical, perfect transport",8.209
+open_path,CV,sd,1,"Empirical, perfect transport",14.78
+open_path,CV,sd,2,"Empirical, perfect transport",23.71
+open_path,CV,sd,0.5,"Predicted, log-linear (as specified)",10.73
+open_path,CV,sd,1,"Predicted, log-linear (as specified)",18.92
+open_path,CV,sd,2,"Predicted, log-linear (as specified)",28.83
+open_path,CV,sd,0.5,"Predicted, exact lognormal",11.16
+open_path,CV,sd,1,"Predicted, exact lognormal",21.44
+open_path,CV,sd,2,"Predicted, exact lognormal",39.21
+open_path,CV,sd,0.5,"Predicted, generator Monte Carlo",10.92
+open_path,CV,sd,1,"Predicted, generator Monte Carlo",19.54
+open_path,CV,sd,2,"Predicted, generator Monte Carlo",30.62
+open_path,L_m,sd,100,null q025,7.262
+open_path,L_m,sd,250,null q025,10.26
+open_path,L_m,sd,500,null q025,10.91
+open_path,L_m,sd,100,null median,14.55
+open_path,L_m,sd,250,null median,20.12
+open_path,L_m,sd,500,null median,20
+open_path,L_m,sd,100,null q975,25.44
+open_path,L_m,sd,250,null q975,38.51
+open_path,L_m,sd,500,null q975,43.06
+open_path,L_m,sd,100,"Empirical, total error",9.822
+open_path,L_m,sd,250,"Empirical, total error",11.21
+open_path,L_m,sd,500,"Empirical, total error",20.99
+open_path,L_m,sd,100,"Empirical, perfect transport",9.612
+open_path,L_m,sd,250,"Empirical, perfect transport",10.37
+open_path,L_m,sd,500,"Empirical, perfect transport",22.76
+open_path,L_m,sd,100,"Predicted, log-linear (as specified)",15.39
+open_path,L_m,sd,250,"Predicted, log-linear (as specified)",22.4
+open_path,L_m,sd,500,"Predicted, log-linear (as specified)",23.78
+open_path,L_m,sd,100,"Predicted, exact lognormal",17.93
+open_path,L_m,sd,250,"Predicted, exact lognormal",27.64
+open_path,L_m,sd,500,"Predicted, exact lognormal",32.19
+open_path,L_m,sd,100,"Predicted, generator Monte Carlo",17.14
+open_path,L_m,sd,250,"Predicted, generator Monte Carlo",23.3
+open_path,L_m,sd,500,"Predicted, generator Monte Carlo",24.55
+open_path,L_m,mae,100,null q025,6.334
+open_path,L_m,mae,250,null q025,8.99
+open_path,L_m,mae,500,null q025,9.128
+open_path,L_m,mae,100,null median,11.35
+open_path,L_m,mae,250,null median,15.88
+open_path,L_m,mae,500,null median,16.3
+open_path,L_m,mae,100,null q975,18.25
+open_path,L_m,mae,250,null q975,25.41
+open_path,L_m,mae,500,null q975,28.93
+open_path,L_m,mae,100,"Empirical, total error",7.841
+open_path,L_m,mae,250,"Empirical, total error",9.041
+open_path,L_m,mae,500,"Empirical, total error",16.37
+open_path,L_m,mae,100,"Empirical, perfect transport",8.741
+open_path,L_m,mae,250,"Empirical, perfect transport",10.6
+open_path,L_m,mae,500,"Empirical, perfect transport",17.64
+open_path,L_m,mae,100,"Predicted, log-linear (as specified)",11.47
+open_path,L_m,mae,250,"Predicted, log-linear (as specified)",16.69
+open_path,L_m,mae,500,"Predicted, log-linear (as specified)",17.73
+open_path,L_m,mae,100,"Predicted, exact lognormal",13.05
+open_path,L_m,mae,250,"Predicted, exact lognormal",19.94
+open_path,L_m,mae,500,"Predicted, exact lognormal",22.89
+open_path,L_m,mae,100,"Predicted, generator Monte Carlo",11.79
+open_path,L_m,mae,250,"Predicted, generator Monte Carlo",16.35
+open_path,L_m,mae,500,"Predicted, generator Monte Carlo",17.22

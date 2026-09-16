@@ -1,0 +1,22 @@
+Figure 5. Point versus open-path geometry. Panel A plots sigma_rep against
+H = CV*L/sqrt(A) on log-log axes at n = 1 for both geometries, with 95 percent
+bootstrap intervals. Panels B and C show the fitted free exponents of
+sigma_rep = a * CV^alpha * (L/sqrt(A))^beta for each geometry at each n, with 95
+percent confidence intervals and a dotted line at the first-order prediction of
+1.
+
+Open-path sampling lowers the coefficient without changing the shape: at every
+n the two geometries have overlapping alpha and beta intervals, and the length
+exponent sits near 0.4 to 0.55 for both, nowhere near 1. The advantage of the
+open path is largest at n = 1, where a single 1000 m path is compared against a
+single point, and it shrinks as the point network grows.
+
+geometry,n,a,alpha,alpha_se,beta,beta_se
+open_path,1,0.251,0.827,0.112,0.543,0.096
+open_path,2,0.245,0.831,0.114,0.533,0.097
+open_path,3,0.236,0.833,0.108,0.531,0.093
+open_path,4,0.237,0.822,0.114,0.536,0.098
+point,1,0.338,0.784,0.095,0.377,0.082
+point,2,0.211,0.777,0.041,0.306,0.035
+point,3,0.248,0.821,0.095,0.515,0.082
+point,4,0.215,0.811,0.117,0.541,0.101
