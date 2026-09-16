@@ -87,6 +87,7 @@ class FlexpartTransportOperator(ITransportOperator):
             "dry_run",
             "surface_only",
             "species_number",
+            "max_retries",
         )
         runner_config = {k: config[k] for k in runner_keys if k in config}
 
